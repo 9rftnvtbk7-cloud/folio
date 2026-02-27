@@ -604,18 +604,52 @@ async function validateTicker(tk){
   if(tvCache[tk]){showTvResult(tvCache[tk]);return;}
   sE.innerHTML=SVG_SP;iE.classList.add("hidden");
   try{
-    const [profile,quote]=await Promise.all([fhFetch("stock/profile2",{symbol:tk}),fhFetch("quote",{symbol:tk})]);
+    // Try profile2 + quote first (works for US and some EU)
+    const [profile,quote]=await Promise.all([
+      fhFetch("stock/profile2",{symbol:tk}).catch(()=>null),
+      fhFetch("quote",{symbol:tk}).catch(()=>null)
+    ]);
     if(document.getElementById("fTicker").value.trim().toUpperCase()!==tk)return;
-    if(profile&&profile.name&&quote&&quote.c>0){
-      const ccy=profile.currency||"USD";
-      const r={valid:true,ticker:tk,name:profile.name,price:quote.c,currency:ccy,exchange:profile.exchange||"—",prevClose:quote.pc||quote.c,sector:profile.finnhubIndustry||"Other",country:profile.country||"Other"};
+
+    // Check if quote has valid data (c > 0)
+    if(quote&&quote.c>0){
+      const name=profile&&profile.name?profile.name:tk;
+      const ccy=profile&&profile.currency?profile.currency:(TM[tk]?TM[tk].c:"EUR");
+      const exch=profile&&profile.exchange?profile.exchange:(TM[tk]?TM[tk].e:"—");
+      const sect=profile&&profile.finnhubIndustry?profile.finnhubIndustry:(TM[tk]?TM[tk].s:"Other");
+      const country=profile&&profile.country?profile.country:(TM[tk]?TM[tk].g:"Other");
+      const r={valid:true,ticker:tk,name,price:quote.c,currency:ccy,exchange:exch,prevClose:quote.pc||quote.c,sector:sect,country};
       r.change=quote.d||0;r.changePct=quote.dp||0;tvCache[tk]=r;showTvResult(r);
-      // Save name, metadata, auto-set currency
-      if(r.name){stockNames[tk]=r.name;saveNames();}
-      if(!tickerMeta[tk]){tickerMeta[tk]={sector:r.sector,industry:r.sector,type:"Stock",geo:r.country,risk:"Medium",exchange:r.exchange,currency:ccy};saveMeta();}
+      if(name&&name!==tk){stockNames[tk]=name;saveNames();}
+      if(!tickerMeta[tk]){tickerMeta[tk]={sector:sect,industry:sect,type:"Stock",geo:country,risk:"Medium",exchange:exch,currency:ccy};saveMeta();}
       const ccySel=document.getElementById("fCurrency");
       if(ccy){for(let o of ccySel.options){if(o.value===ccy){ccySel.value=ccy;break;}}}
-    }else{tvCache[tk]={valid:false,ticker:tk};showTvResult(tvCache[tk]);}
+      return;
+    }
+
+    // Fallback: try symbol search
+    const search=await fhFetch("search",{q:tk}).catch(()=>null);
+    if(search&&search.result&&search.result.length>0){
+      // Found in search — try the first match's symbol
+      const match=search.result.find(r=>r.symbol===tk)||search.result[0];
+      const sym=match.symbol;
+      const q2=await fhFetch("quote",{symbol:sym}).catch(()=>null);
+      if(q2&&q2.c>0){
+        const r={valid:true,ticker:tk,name:match.description||tk,price:q2.c,currency:TM[tk]?TM[tk].c:"EUR",exchange:match.type||"—",prevClose:q2.pc||q2.c,sector:TM[tk]?TM[tk].s:"Other",country:"Other"};
+        r.change=q2.d||0;r.changePct=q2.dp||0;tvCache[tk]=r;showTvResult(r);
+        if(r.name&&r.name!==tk){stockNames[tk]=r.name;saveNames();}
+        return;
+      }
+    }
+
+    // If we have it in TM (hardcoded metadata), accept it even without live price
+    if(TM[tk]){
+      const r={valid:true,ticker:tk,name:stockNames[tk]||tk,price:0,currency:TM[tk].c,exchange:TM[tk].e,prevClose:0,sector:TM[tk].s,country:TM[tk].g};
+      r.change=0;r.changePct=0;r.noPriceYet=true;tvCache[tk]=r;showTvResult(r);
+      return;
+    }
+
+    tvCache[tk]={valid:false,ticker:tk};showTvResult(tvCache[tk]);
   }catch(e){console.error(e);if(document.getElementById("fTicker").value.trim().toUpperCase()===tk)showTvResult({valid:false,ticker:tk});}
 }
 
@@ -623,9 +657,10 @@ function showTvResult(r){
   const sE=document.getElementById("tickerStatus"),iE=document.getElementById("tickerInfo");
   if(r.valid){tvValid=true;lastTv=r.ticker;sE.innerHTML=SVG_OK;
     const cc=r.change>=0?"var(--green)":"var(--red)",cs=r.change>=0?"+":"",meta=getMeta(r.ticker);
+    const priceText=r.noPriceYet?"(price pending)":r.price.toLocaleString("fr-FR",{minimumFractionDigits:2})+" "+r.currency;
     iE.className="ticker-info";iE.classList.remove("hidden");
-    iE.innerHTML='<div class="ticker-info-item"><span class="ticker-info-label">Name</span><span class="ticker-info-value">'+r.name+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Price</span><span class="ticker-info-value">'+r.price.toLocaleString("fr-FR",{minimumFractionDigits:2})+" "+r.currency+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Change</span><span class="ticker-info-value" style="color:'+cc+'">'+cs+r.change.toFixed(2)+" ("+cs+r.changePct.toFixed(2)+'%)</span></div><div class="ticker-info-item"><span class="ticker-info-label">Exchange</span><span class="ticker-info-value">'+r.exchange+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Sector</span><span class="ticker-info-value">'+meta.sector+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Type</span><span class="ticker-info-value">'+meta.type+"</span></div>";
-  }else{tvValid=false;lastTv=r.ticker;sE.innerHTML=SVG_NO;iE.className="ticker-info invalid";iE.classList.remove("hidden");iE.innerHTML='<span style="color:var(--red);font-weight:600">Ticker "'+r.ticker+'" not found on Finnhub. Try Manual mode for unlisted stocks.</span>';}
+    iE.innerHTML='<div class="ticker-info-item"><span class="ticker-info-label">Name</span><span class="ticker-info-value">'+r.name+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Price</span><span class="ticker-info-value">'+priceText+'</span></div>'+(r.noPriceYet?'':'<div class="ticker-info-item"><span class="ticker-info-label">Change</span><span class="ticker-info-value" style="color:'+cc+'">'+cs+r.change.toFixed(2)+" ("+cs+r.changePct.toFixed(2)+'%)</span></div>')+'<div class="ticker-info-item"><span class="ticker-info-label">Exchange</span><span class="ticker-info-value">'+meta.exchange+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Sector</span><span class="ticker-info-value">'+meta.sector+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Type</span><span class="ticker-info-value">'+meta.type+"</span></div>";
+  }else{tvValid=false;lastTv=r.ticker;sE.innerHTML=SVG_NO;iE.className="ticker-info invalid";iE.classList.remove("hidden");iE.innerHTML='<span style="color:var(--red);font-weight:600">Ticker "'+r.ticker+'" not found. Try Manual mode for unlisted stocks.</span>';}
 }
 
 /* ═══ Events ═══ */
