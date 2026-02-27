@@ -202,6 +202,12 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
         <div class="form-group" id="fTickerGroup"><label class="form-label">Ticker</label><div class="ticker-wrap"><input class="input" id="fTicker" placeholder="BN.PA" autocomplete="off"><span class="ticker-status" id="tickerStatus"></span></div><div id="tickerInfo" class="hidden"></div></div>
         <div class="form-group hidden" id="fNameGroup"><label class="form-label">Stock Name</label><input class="input" id="fName" placeholder="My Private Fund"></div>
         <div class="form-group hidden" id="fCurrentPriceGroup"><label class="form-label">Current Price (for valuation)</label><input class="input" id="fCurrentPrice" type="number" step="any" min="0" placeholder="100.00"></div>
+        <div class="form-group hidden" id="fManSector"><label class="form-label">Sector</label><input class="input" id="fSector" placeholder="Technology" list="sectorList"><datalist id="sectorList"><option value="Technology"><option value="Financial Services"><option value="Healthcare"><option value="Consumer Cyclical"><option value="Consumer Defensive"><option value="Energy"><option value="Industrials"><option value="Communication Services"><option value="Real Estate"><option value="Commodities"><option value="Crypto"><option value="Multi-Sector"><option value="Other"></datalist></div>
+        <div class="form-group hidden" id="fManIndustry"><label class="form-label">Industry</label><input class="input" id="fIndustry" placeholder="Software"></div>
+        <div class="form-group hidden" id="fManType"><label class="form-label">Asset Type</label><select class="input" id="fAssetType"><option value="Stock">Stock</option><option value="ETF">ETF</option><option value="OPCVM">OPCVM</option><option value="SCPI">SCPI</option><option value="Bond">Bond</option><option value="Crypto">Crypto</option><option value="PE Fund">PE Fund</option><option value="Other">Other</option></select></div>
+        <div class="form-group hidden" id="fManGeo"><label class="form-label">Geography</label><input class="input" id="fGeo" placeholder="France" list="geoList"><datalist id="geoList"><option value="France"><option value="United States"><option value="Germany"><option value="United Kingdom"><option value="Netherlands"><option value="Switzerland"><option value="Global"><option value="Europe"><option value="Other"></datalist></div>
+        <div class="form-group hidden" id="fManRisk"><label class="form-label">Risk</label><select class="input" id="fRisk"><option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option><option value="Very High">Very High</option></select></div>
+        <div class="form-group hidden" id="fManExchange"><label class="form-label">Exchange</label><input class="input" id="fExchange" placeholder="Euronext Paris"></div>
         <div class="form-group"><label class="form-label">Type</label><select class="input" id="fType"><option value="BUY">Buy</option><option value="SELL">Sell</option></select></div>
         <div class="form-group"><label class="form-label">Shares</label><input class="input" id="fShares" type="number" step="any" min="0.001" placeholder="100"></div>
         <div class="form-group"><label class="form-label">Price (native ccy)</label><input class="input" id="fPrice" type="number" step="any" min="0.01" placeholder="65.50"></div>
@@ -320,8 +326,8 @@ onAuthStateChanged(auth,async(user)=>{
 });
 
 /* ═══ Firestore sync ═══ */
-const COLLECTIONS=["trades","savings","realestate","manual","names","fx"];
-const LS_MAP={trades:"folio-trades",savings:"folio-savings",realestate:"folio-realestate",manual:"folio-manual",names:"folio-names",fx:"folio-fx"};
+const COLLECTIONS=["trades","savings","realestate","manual","names","fx","meta"];
+const LS_MAP={trades:"folio-trades",savings:"folio-savings",realestate:"folio-realestate",manual:"folio-manual",names:"folio-names",fx:"folio-fx",meta:"folio-meta"};
 
 async function loadFromFirestore(uid){
   for(const col of COLLECTIONS){
@@ -376,7 +382,7 @@ const TM={AAPL:{s:"Technology",i:"Consumer Electronics",t:"Stock",g:"United Stat
 "NESN.SW":{s:"Consumer Defensive",i:"Food",t:"Stock",g:"Switzerland",r:"Low",e:"SIX",c:"CHF"},"ROG.SW":{s:"Healthcare",i:"Pharmaceuticals",t:"Stock",g:"Switzerland",r:"Low",e:"SIX",c:"CHF"},
 "BTC-USD":{s:"Crypto",i:"Cryptocurrency",t:"Crypto",g:"Global",r:"Very High",e:"Crypto",c:"USD"},"ETH-USD":{s:"Crypto",i:"Cryptocurrency",t:"Crypto",g:"Global",r:"Very High",e:"Crypto",c:"USD"}};
 
-function getMeta(t){const m=TM[t.toUpperCase()];return m?{sector:m.s,industry:m.i,type:m.t,geo:m.g,risk:m.r,exchange:m.e,currency:m.c}:{sector:"Other",industry:"Other",type:"Stock",geo:"Other",risk:"Medium",exchange:"Other",currency:"EUR"};}
+/* getMeta is defined in Finnhub section above */
 
 /* ═══ State ═══ */
 const STORAGE_KEY="folio-trades",FX_KEY="folio-fx",MANUAL_KEY="folio-manual",NAMES_KEY="folio-names";
@@ -405,37 +411,53 @@ function saveNames(){localStorage.setItem(NAMES_KEY,JSON.stringify(stockNames));
 function getName(tk){return stockNames[tk.toUpperCase()]||"";}
 function isManualTicker(tk){return !!manualPrices[tk.toUpperCase()]||trades.some(t=>t.ticker.toUpperCase()===tk.toUpperCase()&&t.manual);}
 
-/* ═══ Anthropic API ═══ */
-async function callClaude(prompt){
-  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:2048,tools:[{type:"web_search_20250305",name:"web_search"}],messages:[{role:"user",content:prompt}]})});
-  const data=await res.json();return(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+/* ═══ Finnhub API ═══ */
+const FH_KEY="d6gkbt1r01qifrh0fhsgd6gkbt1r01qifrh0fht0";
+const META_STORE_KEY="folio-meta";
+let tickerMeta={};  // {TICKER: {sector,industry,type,geo,risk,exchange}}
+function loadMeta(){try{tickerMeta=JSON.parse(localStorage.getItem(META_STORE_KEY))||{};}catch{tickerMeta={};}}
+function saveMeta(){localStorage.setItem(META_STORE_KEY,JSON.stringify(tickerMeta));if(window.__folioSaveToCloud)window.__folioSaveToCloud("meta",JSON.stringify(tickerMeta));}
+function getMeta(t){const tk=t.toUpperCase();if(tickerMeta[tk])return tickerMeta[tk];const m=TM[tk];return m?{sector:m.s,industry:m.i,type:m.t,geo:m.g,risk:m.r,exchange:m.e,currency:m.c}:{sector:"Other",industry:"Other",type:"Stock",geo:"Other",risk:"Medium",exchange:"Other",currency:"EUR"};}
+
+async function fhFetch(endpoint,params={}){
+  const qs=new URLSearchParams({...params,token:FH_KEY}).toString();
+  const res=await fetch("https://finnhub.io/api/v1/"+endpoint+"?"+qs);
+  if(!res.ok)throw new Error("Finnhub "+res.status);
+  return res.json();
+}
+
+/* ═══ FX Rates ═══ */
+async function fetchFxRates(){
+  try{
+    const data=await(await fetch("https://api.exchangerate-api.com/v4/latest/EUR")).json();
+    if(data&&data.rates){Object.entries(data.rates).forEach(([c,r])=>{if(typeof r==="number"&&r>0)fxRates[c]=r;});fxRates.EUR=1;saveFx();}
+  }catch(e){console.warn("FX fetch failed:",e);}
 }
 
 /* ═══ Price + FX Refresh ═══ */
 async function refreshPrices(){
   const allTickers=[...new Set(trades.map(t=>t.ticker.toUpperCase()))];
-  // Load manual prices into prices object
   Object.entries(manualPrices).forEach(([tk,mp])=>{if(mp&&typeof mp.price==="number")prices[tk]={price:mp.price,change:0,changePct:0,monthAgo:null,yearAgo:null};});
-  // Only fetch Yahoo for non-manual tickers
   const tickers=allTickers.filter(tk=>!isManualTicker(tk));
   if(!tickers.length){render();return;}
   const sE=document.getElementById("priceStatus"),sT=document.getElementById("priceStatusText"),uE=document.getElementById("lastUpdated"),btn=document.getElementById("refreshBtn");
   sE.classList.remove("hidden","error");sT.textContent="Fetching…";btn.classList.add("spinning");
-  const ccys=[...new Set(trades.map(t=>t.currency||"EUR").filter(c=>c!=="EUR"))];
-  const fxQ=ccys.length?" Also provide current FX rates for "+ccys.join(",")+' to EUR as "fx":{"USD":1.08} where value=units per 1 EUR.':"";
   let ok=0,total=tickers.length;
-  for(let i=0;i<tickers.length;i+=10){
-    const batch=tickers.slice(i,i+10);
-    sT.textContent="Fetching "+(Math.min(i+10,total))+"/"+total+"…";
+  // Fetch FX rates in parallel
+  fetchFxRates();
+  // Fetch quotes one by one (Finnhub free tier: 60/min)
+  for(let i=0;i<tickers.length;i++){
+    const tk=tickers[i];
+    sT.textContent="Fetching "+(i+1)+"/"+total+"…";
     try{
-      const text=await callClaude('Get current stock prices for: '+batch.join(", ")+'.'+fxQ+' Respond ONLY with JSON, no markdown. Format: {"prices":[{"ticker":"BN.PA","price":65.5,"prevClose":65.2,"monthAgo":63.0,"yearAgo":58.0}]'+(ccys.length?',"fx":{"USD":1.08}':'')+'}. "prevClose" is yesterday close. "monthAgo" is the closing price approximately 1 month ago. "yearAgo" is the closing price approximately 1 year ago. Use exact ticker symbols. Omit unfound.');
-      const match=text.match(/\{[\s\S]*\}/);
-      if(match){const p=JSON.parse(match[0]);
-        if(p.prices)p.prices.forEach(x=>{if(x.ticker&&typeof x.price==="number"){const prev=x.prevClose||x.price;prices[x.ticker.toUpperCase()]={price:x.price,change:x.price-prev,changePct:prev?((x.price-prev)/prev)*100:0,monthAgo:x.monthAgo||null,yearAgo:x.yearAgo||null};ok++;}});
-        if(p.fx)Object.entries(p.fx).forEach(([c,r])=>{if(typeof r==="number"&&r>0)fxRates[c]=r;});
-        saveFx();
+      const q=await fhFetch("quote",{symbol:tk});
+      if(q&&q.c>0){
+        prices[tk]={price:q.c,change:q.d||0,changePct:q.dp||0,monthAgo:null,yearAgo:null};
+        ok++;
       }
-    }catch(e){console.error("Fetch:",e);}
+      // Rate limit: small delay between calls
+      if(i<tickers.length-1)await new Promise(r=>setTimeout(r,120));
+    }catch(e){console.warn("Quote "+tk+":",e);}
   }
   btn.classList.remove("spinning");
   if(ok>0){sE.classList.add("hidden");uE.classList.remove("hidden");uE.textContent="Updated "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+" ("+ok+"/"+total+")";}
@@ -582,17 +604,18 @@ async function validateTicker(tk){
   if(tvCache[tk]){showTvResult(tvCache[tk]);return;}
   sE.innerHTML=SVG_SP;iE.classList.add("hidden");
   try{
-    const text=await callClaude('Look up Yahoo Finance ticker "'+tk+'". If valid, provide name, current price, previous close, currency, exchange. Respond ONLY with JSON, no markdown. Format: {"valid":true,"ticker":"'+tk+'","name":"Danone SA","price":65.5,"prevClose":65.2,"currency":"EUR","exchange":"Paris"} — If not found: {"valid":false,"ticker":"'+tk+'"}');
+    const [profile,quote]=await Promise.all([fhFetch("stock/profile2",{symbol:tk}),fhFetch("quote",{symbol:tk})]);
     if(document.getElementById("fTicker").value.trim().toUpperCase()!==tk)return;
-    const match=text.match(/\{[\s\S]*?\}/);
-    if(match){const p=JSON.parse(match[0]);
-      if(p.valid&&p.price){const r={valid:true,ticker:tk,name:p.name||tk,price:p.price,currency:p.currency||"EUR",exchange:p.exchange||"—",prevClose:p.prevClose||p.price};r.change=r.price-r.prevClose;r.changePct=r.prevClose?((r.change/r.prevClose)*100):0;tvCache[tk]=r;showTvResult(r);
-        // Save name and auto-set currency
-        if(r.name&&r.name!==tk){stockNames[tk]=r.name;saveNames();}
-        const ccySel=document.getElementById("fCurrency");
-        if(r.currency){for(let o of ccySel.options){if(o.value===r.currency){ccySel.value=r.currency;break;}}}
-      }else{tvCache[tk]={valid:false,ticker:tk};showTvResult(tvCache[tk]);}
-    }else showTvResult({valid:false,ticker:tk});
+    if(profile&&profile.name&&quote&&quote.c>0){
+      const ccy=profile.currency||"USD";
+      const r={valid:true,ticker:tk,name:profile.name,price:quote.c,currency:ccy,exchange:profile.exchange||"—",prevClose:quote.pc||quote.c,sector:profile.finnhubIndustry||"Other",country:profile.country||"Other"};
+      r.change=quote.d||0;r.changePct=quote.dp||0;tvCache[tk]=r;showTvResult(r);
+      // Save name, metadata, auto-set currency
+      if(r.name){stockNames[tk]=r.name;saveNames();}
+      if(!tickerMeta[tk]){tickerMeta[tk]={sector:r.sector,industry:r.sector,type:"Stock",geo:r.country,risk:"Medium",exchange:r.exchange,currency:ccy};saveMeta();}
+      const ccySel=document.getElementById("fCurrency");
+      if(ccy){for(let o of ccySel.options){if(o.value===ccy){ccySel.value=ccy;break;}}}
+    }else{tvCache[tk]={valid:false,ticker:tk};showTvResult(tvCache[tk]);}
   }catch(e){console.error(e);if(document.getElementById("fTicker").value.trim().toUpperCase()===tk)showTvResult({valid:false,ticker:tk});}
 }
 
@@ -602,7 +625,7 @@ function showTvResult(r){
     const cc=r.change>=0?"var(--green)":"var(--red)",cs=r.change>=0?"+":"",meta=getMeta(r.ticker);
     iE.className="ticker-info";iE.classList.remove("hidden");
     iE.innerHTML='<div class="ticker-info-item"><span class="ticker-info-label">Name</span><span class="ticker-info-value">'+r.name+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Price</span><span class="ticker-info-value">'+r.price.toLocaleString("fr-FR",{minimumFractionDigits:2})+" "+r.currency+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Change</span><span class="ticker-info-value" style="color:'+cc+'">'+cs+r.change.toFixed(2)+" ("+cs+r.changePct.toFixed(2)+'%)</span></div><div class="ticker-info-item"><span class="ticker-info-label">Exchange</span><span class="ticker-info-value">'+r.exchange+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Sector</span><span class="ticker-info-value">'+meta.sector+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Type</span><span class="ticker-info-value">'+meta.type+"</span></div>";
-  }else{tvValid=false;lastTv=r.ticker;sE.innerHTML=SVG_NO;iE.className="ticker-info invalid";iE.classList.remove("hidden");iE.innerHTML='<span style="color:var(--red);font-weight:600">Ticker "'+r.ticker+'" not found.</span>';}
+  }else{tvValid=false;lastTv=r.ticker;sE.innerHTML=SVG_NO;iE.className="ticker-info invalid";iE.classList.remove("hidden");iE.innerHTML='<span style="color:var(--red);font-weight:600">Ticker "'+r.ticker+'" not found on Finnhub. Try Manual mode for unlisted stocks.</span>';}
 }
 
 /* ═══ Events ═══ */
@@ -646,7 +669,7 @@ function applyMode(){
   const isManual=pricingMode==="manual";
   document.getElementById("fNameGroup").classList.toggle("hidden",!isManual);
   document.getElementById("fCurrentPriceGroup").classList.toggle("hidden",!isManual);
-  /* In manual mode: hide ticker checker, show name; in yahoo mode: show checker */
+  ["fManSector","fManIndustry","fManType","fManGeo","fManRisk","fManExchange"].forEach(id=>document.getElementById(id).classList.toggle("hidden",!isManual));
   document.getElementById("tickerStatus").innerHTML="";
   document.getElementById("tickerInfo").classList.add("hidden");
   tvValid=false;lastTv="";
@@ -739,16 +762,26 @@ function submitTrade(){
   // Save name
   if(name){stockNames[ticker]=name;saveNames();}
 
-  // For manual: save manual price
-  if(isManual&&currentPrice!=null&&!isNaN(currentPrice)&&currentPrice>0){
-    manualPrices[ticker]={price:currentPrice,currency:currency};
-    prices[ticker]={price:currentPrice,change:0,changePct:0,monthAgo:null,yearAgo:null};
-    saveManual();
+  // For manual: save metadata + price
+  if(isManual){
+    const sector=document.getElementById("fSector").value.trim()||"Other";
+    const industry=document.getElementById("fIndustry").value.trim()||sector;
+    const assetType=document.getElementById("fAssetType").value;
+    const geo=document.getElementById("fGeo").value.trim()||"Other";
+    const risk=document.getElementById("fRisk").value;
+    const exchange=document.getElementById("fExchange").value.trim()||"Manual";
+    tickerMeta[ticker]={sector,industry,type:assetType,geo,risk,exchange,currency};
+    saveMeta();
+    if(currentPrice!=null&&!isNaN(currentPrice)&&currentPrice>0){
+      manualPrices[ticker]={price:currentPrice,currency:currency};
+      prices[ticker]={price:currentPrice,change:0,changePct:0,monthAgo:null,yearAgo:null};
+      saveManual();
+    }
   }
 
   trades.push({id:"t-"+Date.now()+"-"+(++idCounter),ticker,type,shares,price,currency,fees,broker,account,date,notes,manual:isManual,name:name||""});
   saveTrades();
-  ["fTicker","fShares","fPrice","fNotes","fName","fCurrentPrice"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+  ["fTicker","fShares","fPrice","fNotes","fName","fCurrentPrice","fSector","fIndustry","fGeo","fExchange"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
   document.getElementById("fType").value="BUY";document.getElementById("fFees").value="0";
   document.getElementById("fDate").value=new Date().toISOString().split("T")[0];
   document.getElementById("tickerStatus").innerHTML="";document.getElementById("tickerInfo").classList.add("hidden");
@@ -918,14 +951,14 @@ function renderGlobal(){
 
 /* ═══ Init ═══ */
 function initApp(){
-  loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();
+  loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();loadMeta();
   trades.forEach(t=>{if(t.name&&!stockNames[t.ticker.toUpperCase()]){stockNames[t.ticker.toUpperCase()]=t.name;}});
   document.getElementById("fDate").value=new Date().toISOString().split("T")[0];
   render();refreshPrices();
 }
 // Expose reload for cross-device sync
 window.__folioReload=function(){
-  loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();
+  loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();loadMeta();
   trades.forEach(t=>{if(t.name&&!stockNames[t.ticker.toUpperCase()]){stockNames[t.ticker.toUpperCase()]=t.name;}});
   render();
 };
