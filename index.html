@@ -149,6 +149,17 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
 .logout-btn:hover{border-color:var(--bh);color:var(--bright)}
 .sync-indicator{font-size:11px;color:var(--dim);display:flex;align-items:center;gap:4px}
 .sync-indicator .dot-sync{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+.search-results{position:absolute;z-index:100;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4);margin-top:4px}
+.search-results.hidden{display:none}
+.search-item{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--border);transition:background .1s}
+.search-item:last-child{border-bottom:none}
+.search-item:hover{background:var(--bh)}
+.search-item-name{font-size:13px;color:var(--bright);font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-item-ticker{font-size:12px;font-family:var(--mono);color:var(--accent);font-weight:600;flex-shrink:0}
+.search-item-type{font-size:10px;color:var(--dim);flex-shrink:0}
+.search-hint{padding:10px 14px;font-size:12px;color:var(--dim);text-align:center}
+#fSearchGroup{position:relative}
+#fTickerGroup .ticker-wrap input[readonly]{opacity:0.7}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
@@ -199,7 +210,8 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
     <div class="form-card hidden" id="tradeForm">
       <div style="margin-bottom:14px"><label class="form-label" style="margin-bottom:6px;display:block">Pricing Mode</label><div class="mode-toggle"><button class="mode-btn active" id="modeYahoo" data-mode="yahoo">Yahoo Finance</button><button class="mode-btn" id="modeManual" data-mode="manual">Manual / Unlisted</button></div></div>
       <div class="form-grid">
-        <div class="form-group" id="fTickerGroup"><label class="form-label">Ticker</label><div class="ticker-wrap"><input class="input" id="fTicker" placeholder="BN.PA" autocomplete="off"><span class="ticker-status" id="tickerStatus"></span></div><div id="tickerInfo" class="hidden"></div></div>
+        <div class="form-group" id="fSearchGroup"><label class="form-label">Search Company</label><div class="ticker-wrap"><input class="input" id="fSearch" placeholder="Danone, LVMH, Apple…" autocomplete="off"><span class="ticker-status" id="searchSpinner"></span></div><div class="search-results hidden" id="searchResults"></div></div>
+        <div class="form-group" id="fTickerGroup"><label class="form-label">Ticker</label><div class="ticker-wrap"><input class="input" id="fTicker" placeholder="BN.PA" autocomplete="off" readonly><span class="ticker-status" id="tickerStatus"></span></div><div id="tickerInfo" class="hidden"></div></div>
         <div class="form-group hidden" id="fNameGroup"><label class="form-label">Stock Name</label><input class="input" id="fName" placeholder="My Private Fund"></div>
         <div class="form-group hidden" id="fCurrentPriceGroup"><label class="form-label">Current Price (for valuation)</label><input class="input" id="fCurrentPrice" type="number" step="any" min="0" placeholder="100.00"></div>
         <div class="form-group hidden" id="fManSector"><label class="form-label">Sector</label><input class="input" id="fSector" placeholder="Technology" list="sectorList"><datalist id="sectorList"><option value="Technology"><option value="Financial Services"><option value="Healthcare"><option value="Consumer Cyclical"><option value="Consumer Defensive"><option value="Energy"><option value="Industrials"><option value="Communication Services"><option value="Real Estate"><option value="Commodities"><option value="Crypto"><option value="Multi-Sector"><option value="Other"></datalist></div>
@@ -663,6 +675,60 @@ function showTvResult(r){
   }else{tvValid=false;lastTv=r.ticker;sE.innerHTML=SVG_NO;iE.className="ticker-info invalid";iE.classList.remove("hidden");iE.innerHTML='<span style="color:var(--red);font-weight:600">Ticker "'+r.ticker+'" not found. Try Manual mode for unlisted stocks.</span>';}
 }
 
+/* ═══ Company Search ═══ */
+let searchTimer=null,lastSearch="";
+const searchInput=()=>document.getElementById("fSearch");
+const searchBox=()=>document.getElementById("searchResults");
+const searchSpin=()=>document.getElementById("searchSpinner");
+
+function initSearchListener(){
+  const si=searchInput();if(!si)return;
+  si.addEventListener("input",()=>{
+    const q=si.value.trim();
+    if(q.length<2){searchBox().classList.add("hidden");searchSpin().innerHTML="";return;}
+    if(q===lastSearch)return;
+    clearTimeout(searchTimer);
+    searchTimer=setTimeout(()=>doSearch(q),350);
+  });
+  // Close dropdown on outside click
+  document.addEventListener("click",e=>{if(!e.target.closest("#fSearchGroup"))searchBox().classList.remove("hidden")||searchBox().classList.add("hidden");});
+  // Also allow direct ticker entry by making fTicker editable on click
+  document.getElementById("fTicker").addEventListener("dblclick",function(){this.readOnly=false;this.style.opacity="1";});
+}
+
+async function doSearch(q){
+  lastSearch=q;searchSpin().innerHTML=SVG_SP;
+  try{
+    const data=await fhFetch("search",{q});
+    if(searchInput().value.trim()!==q)return;
+    searchSpin().innerHTML="";
+    const box=searchBox();
+    if(!data||!data.result||!data.result.length){
+      box.innerHTML='<div class="search-hint">No results for "'+q+'"</div>';
+      box.classList.remove("hidden");return;
+    }
+    // Deduplicate and show max 8 results
+    const seen=new Set();
+    const results=data.result.filter(r=>{if(seen.has(r.symbol))return false;seen.add(r.symbol);return true;}).slice(0,8);
+    box.innerHTML=results.map(r=>'<div class="search-item" data-sym="'+r.symbol+'" data-name="'+(r.description||"").replace(/"/g,"&quot;")+'" data-type="'+(r.type||"")+'">'+'<span class="search-item-name">'+(r.description||r.symbol)+'</span>'+'<span class="search-item-ticker">'+r.symbol+'</span>'+'<span class="search-item-type">'+(r.type||"")+'</span>'+'</div>').join("");
+    box.classList.remove("hidden");
+    // Click handler on items
+    box.querySelectorAll(".search-item").forEach(item=>{
+      item.addEventListener("click",()=>selectSearchResult(item.dataset.sym,item.dataset.name));
+    });
+  }catch(e){console.warn("Search error:",e);searchSpin().innerHTML="";}
+}
+
+function selectSearchResult(symbol,name){
+  searchBox().classList.add("hidden");
+  searchInput().value=name||symbol;
+  const ti=document.getElementById("fTicker");
+  ti.value=symbol;ti.readOnly=true;ti.style.opacity="0.7";
+  // Trigger validation
+  tvCache={};// Clear cache to force fresh lookup
+  validateTicker(symbol.toUpperCase());
+}
+
 /* ═══ Events ═══ */
 document.addEventListener("click",e=>{
   const tab=e.target.closest(".tab");
@@ -705,16 +771,16 @@ function applyMode(){
   document.getElementById("fNameGroup").classList.toggle("hidden",!isManual);
   document.getElementById("fCurrentPriceGroup").classList.toggle("hidden",!isManual);
   ["fManSector","fManIndustry","fManType","fManGeo","fManRisk","fManExchange"].forEach(id=>document.getElementById(id).classList.toggle("hidden",!isManual));
+  document.getElementById("fSearchGroup").classList.toggle("hidden",isManual);
+  const ti=document.getElementById("fTicker");
+  ti.readOnly=!isManual;ti.style.opacity=isManual?"1":"0.7";
+  ti.placeholder=isManual?"MYFUND":"(selected from search)";
   document.getElementById("tickerStatus").innerHTML="";
   document.getElementById("tickerInfo").classList.add("hidden");
+  document.getElementById("searchResults").classList.add("hidden");
   tvValid=false;lastTv="";
-  if(isManual){
-    document.getElementById("fTicker").placeholder="MYFUND";
-    document.getElementById("fName").focus();
-  }else{
-    document.getElementById("fTicker").placeholder="BN.PA";
-    document.getElementById("fTicker").focus();
-  }
+  if(isManual){ti.focus();}
+  else{document.getElementById("fSearch").value="";document.getElementById("fSearch").focus();}
 }
 
 function promptUpdatePrice(ticker){
@@ -749,10 +815,6 @@ document.getElementById("fTicker").addEventListener("input",e=>{
   const val=e.target.value.trim();
   if(tvTimer)clearTimeout(tvTimer);
   if(pricingMode==="manual"){tvValid=true;lastTv=val;document.getElementById("tickerStatus").innerHTML="";document.getElementById("tickerInfo").classList.add("hidden");return;}
-  if(!val){document.getElementById("tickerStatus").innerHTML="";document.getElementById("tickerInfo").classList.add("hidden");tvValid=false;lastTv="";return;}
-  if(val===lastTv)return;
-  document.getElementById("tickerStatus").innerHTML=SVG_SP;
-  tvTimer=setTimeout(()=>validateTicker(val),800);
 });
 
 function toggleForm(){
@@ -816,7 +878,7 @@ function submitTrade(){
 
   trades.push({id:"t-"+Date.now()+"-"+(++idCounter),ticker,type,shares,price,currency,fees,broker,account,date,notes,manual:isManual,name:name||""});
   saveTrades();
-  ["fTicker","fShares","fPrice","fNotes","fName","fCurrentPrice","fSector","fIndustry","fGeo","fExchange"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
+  ["fTicker","fShares","fPrice","fNotes","fName","fCurrentPrice","fSector","fIndustry","fGeo","fExchange","fSearch"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
   document.getElementById("fType").value="BUY";document.getElementById("fFees").value="0";
   document.getElementById("fDate").value=new Date().toISOString().split("T")[0];
   document.getElementById("tickerStatus").innerHTML="";document.getElementById("tickerInfo").classList.add("hidden");
@@ -989,6 +1051,7 @@ function initApp(){
   loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();loadMeta();
   trades.forEach(t=>{if(t.name&&!stockNames[t.ticker.toUpperCase()]){stockNames[t.ticker.toUpperCase()]=t.name;}});
   document.getElementById("fDate").value=new Date().toISOString().split("T")[0];
+  initSearchListener();
   render();refreshPrices();
 }
 // Expose reload for cross-device sync
