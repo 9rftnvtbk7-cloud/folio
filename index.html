@@ -149,15 +149,18 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
 .logout-btn:hover{border-color:var(--bh);color:var(--bright)}
 .sync-indicator{font-size:11px;color:var(--dim);display:flex;align-items:center;gap:4px}
 .sync-indicator .dot-sync{width:5px;height:5px;border-radius:50%;background:var(--accent)}
-.search-results{position:absolute;z-index:100;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4);margin-top:4px}
+.search-results{position:absolute;z-index:9999;top:100%;left:0;width:420px;background:#1a1f2e;border:1px solid var(--border);border-radius:10px;max-height:320px;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.7);margin-top:4px}
 .search-results.hidden{display:none}
-.search-item{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--border);transition:background .1s}
+.search-item{padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,0.06);transition:background .12s}
 .search-item:last-child{border-bottom:none}
-.search-item:hover{background:var(--bh)}
-.search-item-name{font-size:13px;color:var(--bright);font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.search-item-ticker{font-size:12px;font-family:var(--mono);color:var(--accent);font-weight:600;flex-shrink:0}
-.search-item-type{font-size:10px;color:var(--dim);flex-shrink:0}
-.search-hint{padding:10px 14px;font-size:12px;color:var(--dim);text-align:center}
+.search-item:hover{background:rgba(110,231,183,0.1)}
+.search-item-left{flex:1;min-width:0}
+.search-item-name{font-size:13px;color:var(--bright);font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.search-item-exchange{font-size:11px;color:var(--dim);margin-top:1px;display:block}
+.search-item-right{display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;gap:2px}
+.search-item-ticker{font-size:13px;font-family:var(--mono);color:var(--accent);font-weight:700;background:rgba(110,231,183,0.12);padding:2px 8px;border-radius:4px}
+.search-item-type{font-size:10px;color:var(--dim)}
+.search-hint{padding:14px;font-size:12px;color:var(--dim);text-align:center;background:#1a1f2e}
 #fSearchGroup{position:relative}
 #fTickerGroup .ticker-wrap input[readonly]{opacity:0.7}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -710,7 +713,7 @@ async function doSearch(q){
     // Deduplicate and show max 8 results
     const seen=new Set();
     const results=data.result.filter(r=>{if(seen.has(r.symbol))return false;seen.add(r.symbol);return true;}).slice(0,8);
-    box.innerHTML=results.map(r=>'<div class="search-item" data-sym="'+r.symbol+'" data-name="'+(r.description||"").replace(/"/g,"&quot;")+'" data-type="'+(r.type||"")+'">'+'<span class="search-item-name">'+(r.description||r.symbol)+'</span>'+'<span class="search-item-ticker">'+r.symbol+'</span>'+'<span class="search-item-type">'+(r.type||"")+'</span>'+'</div>').join("");
+    box.innerHTML=results.map(r=>{const exParts=r.symbol.split(".");const exHint=exParts.length>1?exParts[exParts.length-1]:"US";const exMap={PA:"Euronext Paris",AS:"Euronext Amsterdam",DE:"XETRA Frankfurt",L:"London LSE",SW:"SIX Swiss",HK:"Hong Kong",T:"Tokyo",CN:"Canada",DU:"Dusseldorf",BR:"Brussels",MI:"Borsa Italiana",MC:"Madrid",LS:"Lisbon",CO:"Copenhagen",HE:"Helsinki",ST:"Stockholm",OL:"Oslo"};const exName=exMap[exHint]||(exHint==="US"||exHint.length<=4&&!exParts[1]?"US Market":exHint);return '<div class="search-item" data-sym="'+r.symbol+'" data-name="'+(r.description||"").replace(/"/g,"&quot;")+'" data-type="'+(r.type||"")+'">'+'<div class="search-item-left"><span class="search-item-name">'+(r.description||r.symbol)+'</span><span class="search-item-exchange">'+exName+'</span></div>'+'<div class="search-item-right"><span class="search-item-ticker">'+r.symbol+'</span><span class="search-item-type">'+(r.type||"")+'</span></div>'+'</div>';}).join("");
     box.classList.remove("hidden");
     // Click handler on items
     box.querySelectorAll(".search-item").forEach(item=>{
