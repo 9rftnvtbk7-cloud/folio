@@ -149,18 +149,15 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
 .logout-btn:hover{border-color:var(--bh);color:var(--bright)}
 .sync-indicator{font-size:11px;color:var(--dim);display:flex;align-items:center;gap:4px}
 .sync-indicator .dot-sync{width:5px;height:5px;border-radius:50%;background:var(--accent)}
-.search-results{position:absolute;z-index:9999;top:100%;left:0;width:420px;background:#1a1f2e;border:1px solid var(--border);border-radius:10px;max-height:320px;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.7);margin-top:4px}
+.search-results{position:absolute;z-index:100;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.4);margin-top:4px}
 .search-results.hidden{display:none}
-.search-item{padding:10px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,0.06);transition:background .12s}
+.search-item{padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--border);transition:background .1s}
 .search-item:last-child{border-bottom:none}
-.search-item:hover{background:rgba(110,231,183,0.1)}
-.search-item-left{flex:1;min-width:0}
-.search-item-name{font-size:13px;color:var(--bright);font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.search-item-exchange{font-size:11px;color:var(--dim);margin-top:1px;display:block}
-.search-item-right{display:flex;flex-direction:column;align-items:flex-end;flex-shrink:0;gap:2px}
-.search-item-ticker{font-size:13px;font-family:var(--mono);color:var(--accent);font-weight:700;background:rgba(110,231,183,0.12);padding:2px 8px;border-radius:4px}
-.search-item-type{font-size:10px;color:var(--dim)}
-.search-hint{padding:14px;font-size:12px;color:var(--dim);text-align:center;background:#1a1f2e}
+.search-item:hover{background:var(--bh)}
+.search-item-name{font-size:13px;color:var(--bright);font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-item-ticker{font-size:12px;font-family:var(--mono);color:var(--accent);font-weight:600;flex-shrink:0}
+.search-item-type{font-size:10px;color:var(--dim);flex-shrink:0}
+.search-hint{padding:10px 14px;font-size:12px;color:var(--dim);text-align:center}
 #fSearchGroup{position:relative}
 #fTickerGroup .ticker-wrap input[readonly]{opacity:0.7}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -458,27 +455,69 @@ async function refreshPrices(){
   const sE=document.getElementById("priceStatus"),sT=document.getElementById("priceStatusText"),uE=document.getElementById("lastUpdated"),btn=document.getElementById("refreshBtn");
   sE.classList.remove("hidden","error");sT.textContent="Fetching…";btn.classList.add("spinning");
   let ok=0,total=tickers.length;
-  // Fetch FX rates in parallel
   fetchFxRates();
-  // Fetch quotes one by one (Finnhub free tier: 60/min)
+  const failed=[];
+  // Pass 1: Finnhub
   for(let i=0;i<tickers.length;i++){
     const tk=tickers[i];
-    sT.textContent="Fetching "+(i+1)+"/"+total+"…";
+    sT.textContent="Finnhub "+(i+1)+"/"+total+"…";
     try{
       const q=await fhFetch("quote",{symbol:tk});
       if(q&&q.c>0){
         prices[tk]={price:q.c,change:q.d||0,changePct:q.dp||0,monthAgo:null,yearAgo:null};
         ok++;
-      }
-      // Rate limit: small delay between calls
+      }else{failed.push(tk);}
       if(i<tickers.length-1)await new Promise(r=>setTimeout(r,120));
-    }catch(e){console.warn("Quote "+tk+":",e);}
+    }catch(e){failed.push(tk);}
+  }
+  // Pass 2: Yahoo Finance fallback for failed tickers
+  if(failed.length>0){
+    sT.textContent="Yahoo fallback "+failed.length+"…";
+    for(let i=0;i<failed.length;i++){
+      const tk=failed[i];
+      sT.textContent="Yahoo "+(i+1)+"/"+failed.length+"…";
+      try{
+        const yp=await yahooQuote(tk);
+        if(yp&&yp.price>0){
+          prices[tk]={price:yp.price,change:yp.change||0,changePct:yp.changePct||0,monthAgo:null,yearAgo:null};
+          ok++;
+        }
+      }catch(e){console.warn("Yahoo "+tk+":",e);}
+      if(i<failed.length-1)await new Promise(r=>setTimeout(r,200));
+    }
   }
   btn.classList.remove("spinning");
   if(ok>0){sE.classList.add("hidden");uE.classList.remove("hidden");uE.textContent="Updated "+new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})+" ("+ok+"/"+total+")";}
   else{sE.classList.add("error");sT.textContent="Fetch failed";}
   render();
 }
+
+async function yahooQuote(symbol){
+  const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1d&range=5d";
+  const proxies=[
+    "https://corsproxy.io/?url="+encodeURIComponent(url),
+    "https://api.allorigins.win/raw?url="+encodeURIComponent(url)
+  ];
+  for(const proxyUrl of proxies){
+    try{
+      const resp=await fetch(proxyUrl,{signal:AbortSignal.timeout(6000)});
+      if(!resp.ok)continue;
+      const data=await resp.json();
+      const r=data?.chart?.result?.[0];
+      if(!r)continue;
+      const meta=r.meta||{};
+      const closes=r.indicators?.quote?.[0]?.close||[];
+      const last=closes.filter(c=>c!==null);
+      const price=meta.regularMarketPrice||last[last.length-1]||0;
+      const prevClose=meta.chartPreviousClose||meta.previousClose||(last.length>1?last[last.length-2]:price);
+      const change=price-prevClose;
+      const changePct=prevClose>0?(change/prevClose)*100:0;
+      if(price>0)return{price,change,changePct};
+    }catch(e){continue;}
+  }
+  return null;
+}
+
 
 /* ═══ Positions ═══ */
 function getPositions(){
@@ -713,7 +752,7 @@ async function doSearch(q){
     // Deduplicate and show max 8 results
     const seen=new Set();
     const results=data.result.filter(r=>{if(seen.has(r.symbol))return false;seen.add(r.symbol);return true;}).slice(0,8);
-    box.innerHTML=results.map(r=>{const exParts=r.symbol.split(".");const exHint=exParts.length>1?exParts[exParts.length-1]:"US";const exMap={PA:"Euronext Paris",AS:"Euronext Amsterdam",DE:"XETRA Frankfurt",L:"London LSE",SW:"SIX Swiss",HK:"Hong Kong",T:"Tokyo",CN:"Canada",DU:"Dusseldorf",BR:"Brussels",MI:"Borsa Italiana",MC:"Madrid",LS:"Lisbon",CO:"Copenhagen",HE:"Helsinki",ST:"Stockholm",OL:"Oslo"};const exName=exMap[exHint]||(exHint==="US"||exHint.length<=4&&!exParts[1]?"US Market":exHint);return '<div class="search-item" data-sym="'+r.symbol+'" data-name="'+(r.description||"").replace(/"/g,"&quot;")+'" data-type="'+(r.type||"")+'">'+'<div class="search-item-left"><span class="search-item-name">'+(r.description||r.symbol)+'</span><span class="search-item-exchange">'+exName+'</span></div>'+'<div class="search-item-right"><span class="search-item-ticker">'+r.symbol+'</span><span class="search-item-type">'+(r.type||"")+'</span></div>'+'</div>';}).join("");
+    box.innerHTML=results.map(r=>'<div class="search-item" data-sym="'+r.symbol+'" data-name="'+(r.description||"").replace(/"/g,"&quot;")+'" data-type="'+(r.type||"")+'">'+'<span class="search-item-name">'+(r.description||r.symbol)+'</span>'+'<span class="search-item-ticker">'+r.symbol+'</span>'+'<span class="search-item-type">'+(r.type||"")+'</span>'+'</div>').join("");
     box.classList.remove("hidden");
     // Click handler on items
     box.querySelectorAll(".search-item").forEach(item=>{
@@ -725,11 +764,36 @@ async function doSearch(q){
 function selectSearchResult(symbol,name){
   searchBox().classList.add("hidden");
   searchInput().value=name||symbol;
+  const tk=symbol.toUpperCase();
   const ti=document.getElementById("fTicker");
-  ti.value=symbol;ti.readOnly=true;ti.style.opacity="0.7";
-  // Trigger validation
-  tvCache={};// Clear cache to force fresh lookup
-  validateTicker(symbol.toUpperCase());
+  ti.value=tk;ti.readOnly=true;ti.style.opacity="0.7";
+  // Accept immediately — the search already confirmed this ticker exists
+  tvValid=true;lastTv=tk;
+  if(name){stockNames[tk]=name;saveNames();}
+  // Try to get a live quote in background, but don't block
+  const sE=document.getElementById("tickerStatus");
+  const iE=document.getElementById("tickerInfo");
+  const meta=getMeta(tk);
+  // Show info card right away with what we know
+  sE.innerHTML=SVG_OK;
+  iE.className="ticker-info";iE.classList.remove("hidden");
+  iE.innerHTML='<div class="ticker-info-item"><span class="ticker-info-label">Name</span><span class="ticker-info-value">'+(name||tk)+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Exchange</span><span class="ticker-info-value">'+meta.exchange+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Sector</span><span class="ticker-info-value">'+meta.sector+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Type</span><span class="ticker-info-value">'+meta.type+'</span></div>';
+  // Auto-set currency from metadata
+  const ccy=meta.currency||"EUR";
+  const ccySel=document.getElementById("fCurrency");
+  for(let o of ccySel.options){if(o.value===ccy){ccySel.value=ccy;break;}}
+  // Background: try fetching quote to enrich info
+  (async()=>{
+    let p=null;
+    try{const q=await fhFetch("quote",{symbol:tk});if(q&&q.c>0)p={price:q.c,change:q.d||0,changePct:q.dp||0};}catch(e){}
+    if(!p){try{p=await yahooQuote(tk);}catch(e){}}
+    if(p&&p.price>0){
+      prices[tk]={price:p.price,change:p.change||0,changePct:p.changePct||0,monthAgo:null,yearAgo:null};
+      const cc=(p.change||0)>=0?"var(--green)":"var(--red)";
+      const cs=(p.change||0)>=0?"+":"";
+      iE.innerHTML+='<div class="ticker-info-item"><span class="ticker-info-label">Price</span><span class="ticker-info-value">'+p.price.toLocaleString("fr-FR",{minimumFractionDigits:2})+" "+ccy+'</span></div><div class="ticker-info-item"><span class="ticker-info-label">Change</span><span class="ticker-info-value" style="color:'+cc+'">'+cs+(p.change||0).toFixed(2)+" ("+cs+(p.changePct||0).toFixed(2)+'%)</span></div>';
+    }
+  })();
 }
 
 /* ═══ Events ═══ */
