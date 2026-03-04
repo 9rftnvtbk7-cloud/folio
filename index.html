@@ -160,6 +160,17 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
 .search-hint{padding:10px 14px;font-size:12px;color:var(--dim);text-align:center}
 #fSearchGroup{position:relative}
 #fTickerGroup .ticker-wrap input[readonly]{opacity:0.7}
+/* Market Indices Bar */
+.indices-bar{padding:0 24px;margin-bottom:8px;overflow:hidden}
+.indices-scroll{display:flex;gap:16px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;padding:4px 0}
+.indices-scroll::-webkit-scrollbar{display:none}
+.idx-chip{display:flex;align-items:center;gap:8px;padding:7px 14px;background:var(--card);border:1px solid var(--border);border-radius:8px;flex-shrink:0;min-width:0}
+.idx-name{font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap}
+.idx-price{font-size:13px;font-weight:700;color:var(--bright);font-family:var(--mono);white-space:nowrap}
+.idx-change{font-size:11px;font-weight:600;font-family:var(--mono);white-space:nowrap;padding:2px 6px;border-radius:4px}
+.idx-change.up{color:#6ee7b7;background:rgba(110,231,183,0.1)}
+.idx-change.down{color:#f87171;background:rgba(248,113,113,0.1)}
+.idx-loading{font-size:11px;color:var(--dim);padding:8px 0}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
@@ -191,6 +202,9 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
       <button class="refresh-btn" id="refreshBtn" title="Refresh"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg></button>
     </div>
   </header>
+  <div class="indices-bar" id="indicesBar">
+    <div class="indices-scroll" id="indicesScroll"></div>
+  </div>
   <div class="card-row">
     <div class="card"><span class="card-label">Market Value</span><span class="card-value" id="cardMkt">€0,00</span></div>
     <div class="card"><span class="card-label">Total P&L</span><span class="card-value" id="cardPnL">€0,00</span><span class="card-sub" id="cardPnLPct">+0.00%</span></div>
@@ -1113,13 +1127,50 @@ function renderGlobal(){
   '</div></div>';
 }
 
+/* ═══ Market Indices ═══ */
+const INDICES=[
+  {sym:"^FCHI",name:"CAC 40",ccy:"€"},
+  {sym:"^N100",name:"Euronext 100",ccy:"€"},
+  {sym:"^STOXX50E",name:"Euro Stoxx 50",ccy:"€"},
+  {sym:"^GSPC",name:"S&P 500",ccy:"$"},
+  {sym:"^IXIC",name:"Nasdaq",ccy:"$"},
+  {sym:"^DJI",name:"Dow Jones",ccy:"$"},
+  {sym:"^FTSE",name:"FTSE 100",ccy:"£"},
+  {sym:"^GDAXI",name:"DAX",ccy:"€"}
+];
+
+async function fetchIndices(){
+  const bar=document.getElementById("indicesScroll");
+  if(!bar)return;
+  bar.innerHTML='<span class="idx-loading">Loading indices…</span>';
+  const results=[];
+  for(const idx of INDICES){
+    try{
+      const yp=await yahooQuote(idx.sym);
+      if(yp&&yp.price>0){
+        results.push({...idx,price:yp.price,change:yp.change||0,changePct:yp.changePct||0});
+      }
+    }catch(e){}
+  }
+  if(!results.length){bar.innerHTML='<span class="idx-loading">Indices unavailable</span>';return;}
+  bar.innerHTML=results.map(r=>{
+    const up=r.change>=0;
+    const sign=up?"+":"";
+    return '<div class="idx-chip">'
+      +'<span class="idx-name">'+r.name+'</span>'
+      +'<span class="idx-price">'+r.ccy+r.price.toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0})+'</span>'
+      +'<span class="idx-change '+(up?"up":"down")+'">'+sign+r.changePct.toFixed(2)+'%</span>'
+      +'</div>';
+  }).join("");
+}
+
 /* ═══ Init ═══ */
 function initApp(){
   loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();loadMeta();
   trades.forEach(t=>{if(t.name&&!stockNames[t.ticker.toUpperCase()]){stockNames[t.ticker.toUpperCase()]=t.name;}});
   document.getElementById("fDate").value=new Date().toISOString().split("T")[0];
   initSearchListener();
-  render();refreshPrices();
+  render();refreshPrices();fetchIndices();
 }
 // Expose reload for cross-device sync
 window.__folioReload=function(){
