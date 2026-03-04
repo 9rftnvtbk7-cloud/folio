@@ -399,6 +399,11 @@ window.__folioSaveToCloud=async function(key,data){
 
 <script>
 "use strict";
+/* ═══ Config ═══ */
+// Set your Cloudflare Worker URL here for reliable Yahoo Finance price fetching.
+// Deploy the worker from guide-cloudflare-proxy.md, then paste the URL below.
+// Leave empty ("") to use public CORS proxies (less reliable).
+const CORS_PROXY="https://folio-proxy.t4ng9shfbw.workers.dev/?url=";
 
 /* ═══ Ticker metadata ═══ */
 const TM={AAPL:{s:"Technology",i:"Consumer Electronics",t:"Stock",g:"United States",r:"Medium",e:"NASDAQ",c:"USD"},MSFT:{s:"Technology",i:"Software",t:"Stock",g:"United States",r:"Low",e:"NASDAQ",c:"USD"},GOOGL:{s:"Technology",i:"Internet Services",t:"Stock",g:"United States",r:"Medium",e:"NASDAQ",c:"USD"},AMZN:{s:"Consumer Cyclical",i:"E-Commerce",t:"Stock",g:"United States",r:"Medium",e:"NASDAQ",c:"USD"},META:{s:"Technology",i:"Social Media",t:"Stock",g:"United States",r:"Medium",e:"NASDAQ",c:"USD"},NVDA:{s:"Technology",i:"Semiconductors",t:"Stock",g:"United States",r:"High",e:"NASDAQ",c:"USD"},AMD:{s:"Technology",i:"Semiconductors",t:"Stock",g:"United States",r:"High",e:"NASDAQ",c:"USD"},TSLA:{s:"Consumer Cyclical",i:"Auto Manufacturers",t:"Stock",g:"United States",r:"High",e:"NASDAQ",c:"USD"},JPM:{s:"Financial Services",i:"Banking",t:"Stock",g:"United States",r:"Medium",e:"NYSE",c:"USD"},V:{s:"Financial Services",i:"Credit Services",t:"Stock",g:"United States",r:"Low",e:"NYSE",c:"USD"},JNJ:{s:"Healthcare",i:"Pharmaceuticals",t:"Stock",g:"United States",r:"Low",e:"NYSE",c:"USD"},XOM:{s:"Energy",i:"Oil & Gas",t:"Stock",g:"United States",r:"Medium",e:"NYSE",c:"USD"},PG:{s:"Consumer Defensive",i:"Household Products",t:"Stock",g:"United States",r:"Low",e:"NYSE",c:"USD"},KO:{s:"Consumer Defensive",i:"Beverages",t:"Stock",g:"United States",r:"Low",e:"NYSE",c:"USD"},DIS:{s:"Communication Services",i:"Entertainment",t:"Stock",g:"United States",r:"Medium",e:"NYSE",c:"USD"},BA:{s:"Industrials",i:"Aerospace & Defense",t:"Stock",g:"United States",r:"High",e:"NYSE",c:"USD"},SPY:{s:"Multi-Sector",i:"Broad Market",t:"ETF",g:"United States",r:"Medium",e:"NYSE",c:"USD"},QQQ:{s:"Technology",i:"Broad Market",t:"ETF",g:"United States",r:"Medium",e:"NASDAQ",c:"USD"},GLD:{s:"Commodities",i:"Gold",t:"ETF",g:"Global",r:"Medium",e:"NYSE",c:"USD"},INTC:{s:"Technology",i:"Semiconductors",t:"Stock",g:"United States",r:"Medium",e:"NASDAQ",c:"USD"},NFLX:{s:"Communication Services",i:"Entertainment",t:"Stock",g:"United States",r:"Medium",e:"NASDAQ",c:"USD"},CRM:{s:"Technology",i:"Software",t:"Stock",g:"United States",r:"Medium",e:"NYSE",c:"USD"},PLTR:{s:"Technology",i:"Software",t:"Stock",g:"United States",r:"High",e:"NYSE",c:"USD"},COIN:{s:"Financial Services",i:"Capital Markets",t:"Stock",g:"United States",r:"High",e:"NASDAQ",c:"USD"},
@@ -507,14 +512,17 @@ async function refreshPrices(){
 }
 
 async function yahooQuote(symbol){
-  const url="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1d&range=5d";
+  // Try multiple CORS proxy approaches for Yahoo Finance v8 chart API
+  const yUrl="https://query1.finance.yahoo.com/v8/finance/chart/"+encodeURIComponent(symbol)+"?interval=1d&range=5d";
   const proxies=[
-    "https://corsproxy.io/?url="+encodeURIComponent(url),
-    "https://api.allorigins.win/raw?url="+encodeURIComponent(url)
-  ];
+    CORS_PROXY?CORS_PROXY+encodeURIComponent(yUrl):null,
+    "https://corsproxy.io/?url="+encodeURIComponent(yUrl),
+    "https://api.allorigins.win/raw?url="+encodeURIComponent(yUrl),
+    "https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(yUrl)
+  ].filter(Boolean);
   for(const proxyUrl of proxies){
     try{
-      const resp=await fetch(proxyUrl,{signal:AbortSignal.timeout(6000)});
+      const resp=await fetch(proxyUrl,{signal:AbortSignal.timeout(8000)});
       if(!resp.ok)continue;
       const data=await resp.json();
       const r=data?.chart?.result?.[0];
