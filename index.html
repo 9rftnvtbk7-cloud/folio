@@ -52,7 +52,7 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
 .type-buy{background:rgba(34,197,94,0.15);color:var(--green)}.type-sell{background:rgba(239,68,68,0.15);color:var(--red)}
 .empty-msg{padding:40px;text-align:center;color:#3a3f4a;font-size:14px}
 .color-green{color:var(--green)}.color-red{color:var(--red)}.color-dim{color:#8a8f98}
-.form-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:18px;animation:fadeIn .3s ease}
+.form-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:18px;animation:fadeIn .3s ease;overflow:visible;position:relative;z-index:50}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
 .form-group{display:flex;flex-direction:column;gap:4px}
 .form-label{font-size:11px;color:var(--dim);font-weight:500;text-transform:uppercase;letter-spacing:.5px}
@@ -61,6 +61,9 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
 .form-actions{display:flex;gap:10px}
 .submit-btn{background:var(--accent);color:var(--bg);border:none;border-radius:8px;padding:9px 24px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)}.submit-btn:hover{opacity:.85}
 .cancel-btn{background:transparent;border:1px solid var(--border);border-radius:8px;color:#8a8f98;padding:9px 18px;font-size:13px;font-weight:500;cursor:pointer;font-family:var(--sans)}
+.action-row{display:flex;gap:6px;justify-content:flex-end}
+.edit-btn{background:none;border:1px solid var(--border);color:var(--accent);cursor:pointer;padding:4px 8px;border-radius:6px;font-size:11px;display:flex;align-items:center;gap:4px;transition:all .15s}
+.edit-btn:hover{background:rgba(110,231,183,0.1);border-color:var(--accent)}
 .delete-btn{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:var(--red);cursor:pointer;padding:5px 10px;border-radius:6px;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;font-family:var(--sans)}
 .delete-btn:hover{background:rgba(239,68,68,0.18);border-color:rgba(239,68,68,0.4)}
 .confirm-row{display:flex;gap:6px;align-items:center}
@@ -224,7 +227,7 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
     <div class="form-card hidden" id="tradeForm">
       <div style="margin-bottom:14px"><label class="form-label" style="margin-bottom:6px;display:block">Pricing Mode</label><div class="mode-toggle"><button class="mode-btn active" id="modeYahoo" data-mode="yahoo">Yahoo Finance</button><button class="mode-btn" id="modeManual" data-mode="manual">Manual / Unlisted</button></div></div>
       <div class="form-grid">
-        <div class="form-group" id="fSearchGroup"><label class="form-label">Search Company</label><div class="ticker-wrap"><input class="input" id="fSearch" placeholder="Danone, LVMH, Apple…" autocomplete="off"><span class="ticker-status" id="searchSpinner"></span></div><div class="search-results hidden" id="searchResults"></div></div>
+        <div class="form-group" id="fSearchGroup"><label class="form-label">Search (name, ticker or ISIN)</label><div class="ticker-wrap"><input class="input" id="fSearch" placeholder="Danone, LVMH, FR0000121014…" autocomplete="off"><span class="ticker-status" id="searchSpinner"></span></div><div class="search-results hidden" id="searchResults"></div></div>
         <div class="form-group" id="fTickerGroup"><label class="form-label">Ticker</label><div class="ticker-wrap"><input class="input" id="fTicker" placeholder="BN.PA" autocomplete="off" readonly><span class="ticker-status" id="tickerStatus"></span></div><div id="tickerInfo" class="hidden"></div></div>
         <div class="form-group hidden" id="fNameGroup"><label class="form-label">Stock Name</label><input class="input" id="fName" placeholder="My Private Fund"></div>
         <div class="form-group hidden" id="fCurrentPriceGroup"><label class="form-label">Current Price (for valuation)</label><input class="input" id="fCurrentPrice" type="number" step="any" min="0" placeholder="100.00"></div>
@@ -647,7 +650,7 @@ function render(){
   updateBrokerList();
   const lb=document.getElementById("ledgerBody");
   if(!trades.length)lb.innerHTML='<tr><td colspan="12" class="empty-msg">No trades yet.</td></tr>';
-  else lb.innerHTML=[...trades].reverse().map(t=>{const totE=toEur(t.shares*t.price,t.currency||"EUR");const nm=t.name||getName(t.ticker);return'<tr><td>'+t.date+'</td><td class="td-ticker">'+t.ticker+(nm?'<span class="td-name" title="'+nm+'">'+nm+"</span>":"")+'</td><td><span class="type-badge '+(t.type==="BUY"?"type-buy":"type-sell")+'">'+t.type+'</span></td><td class="td-num">'+t.shares.toLocaleString()+'</td><td class="td-num">'+t.price.toLocaleString("fr-FR",{minimumFractionDigits:2})+'</td><td>'+(t.currency||"EUR")+'</td><td class="td-num">'+eurFmt(totE)+'</td><td class="td-num">'+eurFmt(t.fees||0)+'</td><td>'+(t.broker?'<span class="badge badge-brk">'+t.broker+"</span>":"—")+'</td><td>'+(t.account?'<span class="badge badge-acc">'+t.account+"</span>":"—")+'</td><td>'+(t.notes||"—")+"</td><td>"+(deleteConfirmId===t.id?'<div class="confirm-row"><button class="confirm-yes" data-delete="'+t.id+'">Yes</button><button class="confirm-no" data-cancel-delete>No</button></div>':'<button class="delete-btn" data-confirm="'+t.id+'"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg> Delete</button>')+"</td></tr>";}).join("");
+  else lb.innerHTML=[...trades].reverse().map(t=>{const totE=toEur(t.shares*t.price,t.currency||"EUR");const nm=t.name||getName(t.ticker);return'<tr><td>'+t.date+'</td><td class="td-ticker">'+t.ticker+(nm?'<span class="td-name" title="'+nm+'">'+nm+"</span>":"")+'</td><td><span class="type-badge '+(t.type==="BUY"?"type-buy":"type-sell")+'">'+t.type+'</span></td><td class="td-num">'+t.shares.toLocaleString()+'</td><td class="td-num">'+t.price.toLocaleString("fr-FR",{minimumFractionDigits:2})+'</td><td>'+(t.currency||"EUR")+'</td><td class="td-num">'+eurFmt(totE)+'</td><td class="td-num">'+eurFmt(t.fees||0)+'</td><td>'+(t.broker?'<span class="badge badge-brk">'+t.broker+"</span>":"—")+'</td><td>'+(t.account?'<span class="badge badge-acc">'+t.account+"</span>":"—")+'</td><td>'+(t.notes||"—")+"</td><td>"+(deleteConfirmId===t.id?'<div class="confirm-row"><button class="confirm-yes" data-delete="'+t.id+'">Yes</button><button class="confirm-no" data-cancel-delete>No</button></div>':'<div class="action-row"><button class="edit-btn" data-edit-trade="'+t.id+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="delete-btn" data-confirm="'+t.id+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button></div>')+"</td></tr>";}).join("");
 
   renderDash(enr);
   renderSavings();
@@ -762,6 +765,7 @@ function initSearchListener(){
 
 async function doSearch(q){
   lastSearch=q;searchSpin().innerHTML=SVG_SP;
+  const exMap={PA:"Euronext Paris",AS:"Euronext Amsterdam",DE:"XETRA Frankfurt",L:"London LSE",SW:"SIX Swiss",HK:"Hong Kong",T:"Tokyo",CN:"Canada",DU:"Düsseldorf",BR:"Euronext Brussels",MI:"Borsa Italiana",MC:"Madrid",LS:"Lisbon",CO:"Copenhagen",HE:"Helsinki",ST:"Stockholm",OL:"Oslo",MU:"Munich",SG:"Stuttgart",F:"Frankfurt",VI:"Vienna",IR:"Euronext Dublin",NZ:"New Zealand",AX:"ASX Sydney"};
   try{
     const data=await fhFetch("search",{q});
     if(searchInput().value.trim()!==q)return;
@@ -771,12 +775,17 @@ async function doSearch(q){
       box.innerHTML='<div class="search-hint">No results for "'+q+'"</div>';
       box.classList.remove("hidden");return;
     }
-    // Deduplicate and show max 8 results
     const seen=new Set();
-    const results=data.result.filter(r=>{if(seen.has(r.symbol))return false;seen.add(r.symbol);return true;}).slice(0,8);
-    box.innerHTML=results.map(r=>'<div class="search-item" data-sym="'+r.symbol+'" data-name="'+(r.description||"").replace(/"/g,"&quot;")+'" data-type="'+(r.type||"")+'">'+'<span class="search-item-name">'+(r.description||r.symbol)+'</span>'+'<span class="search-item-ticker">'+r.symbol+'</span>'+'<span class="search-item-type">'+(r.type||"")+'</span>'+'</div>').join("");
+    const results=data.result.filter(r=>{if(seen.has(r.symbol))return false;seen.add(r.symbol);return true;}).slice(0,10);
+    box.innerHTML=results.map(r=>{
+      const parts=r.symbol.split(".");const ext=parts.length>1?parts[parts.length-1]:"";
+      const exName=exMap[ext]||(ext?ext:"US Market");
+      return '<div class="search-item" data-sym="'+r.symbol+'" data-name="'+(r.description||"").replace(/"/g,"&quot;")+'">'
+        +'<div class="search-item-left"><span class="search-item-name">'+(r.description||r.symbol)+'</span><span class="search-item-exchange">'+exName+'</span></div>'
+        +'<div class="search-item-right"><span class="search-item-ticker">'+r.symbol+'</span><span class="search-item-type">'+(r.type||"")+'</span></div>'
+        +'</div>';
+    }).join("");
     box.classList.remove("hidden");
-    // Click handler on items
     box.querySelectorAll(".search-item").forEach(item=>{
       item.addEventListener("click",()=>selectSearchResult(item.dataset.sym,item.dataset.name));
     });
@@ -851,9 +860,66 @@ document.addEventListener("click",e=>{
   if(up){promptUpdatePrice(up.dataset.updatePrice);return;}
   const th=e.target.closest("th[data-sort]");if(th){const c=th.dataset.sort;if(sortCol===c)sortDir=sortDir==="asc"?"desc":"asc";else{sortCol=c;sortDir="asc";}render();return;}
   const cf=e.target.closest("[data-confirm]");if(cf){deleteConfirmId=cf.dataset.confirm;render();return;}
+  const et=e.target.closest("[data-edit-trade]");if(et){editTrade(et.dataset.editTrade);return;}
   const dl=e.target.closest("[data-delete]");if(dl){trades=trades.filter(t=>t.id!==dl.dataset.delete);saveTrades();deleteConfirmId=null;render();refreshPrices();return;}
   const cd=e.target.closest("[data-cancel-delete]");if(cd){deleteConfirmId=null;render();return;}
 });
+
+let editingTradeId=null;
+
+function editTrade(id){
+  const t=trades.find(x=>x.id===id);
+  if(!t)return;
+  editingTradeId=id;
+  // Show form
+  const f=document.getElementById("tradeForm");f.classList.remove("hidden");
+  // Set mode
+  const isManual=isManualTicker(t.ticker);
+  pricingMode=isManual?"manual":"yahoo";
+  document.querySelectorAll(".mode-btn").forEach(b=>b.classList.toggle("active",b.dataset.mode===pricingMode));
+  applyMode();
+  // Fill fields
+  document.getElementById("fTicker").value=t.ticker;
+  document.getElementById("fTicker").readOnly=false;
+  document.getElementById("fTicker").style.opacity="1";
+  if(!isManual){
+    document.getElementById("fSearch").value=t.name||getName(t.ticker)||t.ticker;
+  }
+  document.getElementById("fType").value=t.type;
+  document.getElementById("fShares").value=t.shares;
+  document.getElementById("fPrice").value=t.price;
+  document.getElementById("fCurrency").value=t.currency||"EUR";
+  document.getElementById("fFees").value=t.fees||0;
+  document.getElementById("fBroker").value=t.broker||"";
+  document.getElementById("fAccount").value=t.account||"CTO";
+  document.getElementById("fDate").value=t.date||"";
+  document.getElementById("fNotes").value=t.notes||"";
+  // Fill manual fields
+  if(isManual){
+    document.getElementById("fName").value=t.name||getName(t.ticker)||"";
+    const mp=manualPrices[t.ticker]||{};
+    document.getElementById("fCurrentPrice").value=mp.price||"";
+  }
+  // Fill metadata fields (always fill, show in manual mode)
+  const meta=tickerMeta[t.ticker]||getMeta(t.ticker);
+  document.getElementById("fSector").value=meta.sector||"";
+  document.getElementById("fIndustry").value=meta.industry||"";
+  document.getElementById("fAssetType").value=meta.type||"Stock";
+  document.getElementById("fGeo").value=meta.geo||"";
+  document.getElementById("fRisk").value=meta.risk||"Medium";
+  document.getElementById("fExchange").value=meta.exchange||"";
+  // In yahoo mode, also show metadata fields for editing
+  if(!isManual){
+    ["fManSector","fManIndustry","fManType","fManGeo","fManRisk","fManExchange"].forEach(id=>document.getElementById(id).classList.remove("hidden"));
+  }
+  // Mark form as editing
+  tvValid=true;lastTv=t.ticker;
+  document.getElementById("tickerStatus").innerHTML=SVG_OK;
+  document.getElementById("tickerInfo").classList.add("hidden");
+  document.getElementById("submitTradeBtn").textContent="Update Trade";
+  // Scroll to form
+  f.scrollIntoView({behavior:"smooth",block:"start"});
+}
 
 function applyMode(){
   const isManual=pricingMode==="manual";
@@ -918,7 +984,7 @@ function toggleForm(){
   }
   hideError();
 }
-function hideForm(){document.getElementById("tradeForm").classList.add("hidden");hideError();document.getElementById("tickerStatus").innerHTML="";document.getElementById("tickerInfo").classList.add("hidden");tvValid=false;lastTv="";}
+function hideForm(){document.getElementById("tradeForm").classList.add("hidden");hideError();document.getElementById("tickerStatus").innerHTML="";document.getElementById("tickerInfo").classList.add("hidden");tvValid=false;lastTv="";editingTradeId=null;document.getElementById("submitTradeBtn").textContent="Add Trade";pricingMode="yahoo";document.querySelectorAll(".mode-btn").forEach(b=>b.classList.toggle("active",b.dataset.mode==="yahoo"));applyMode();}
 function showError(m){document.getElementById("formError").classList.remove("hidden");document.getElementById("formErrorText").textContent=m;}
 function hideError(){document.getElementById("formError").classList.add("hidden");}
 
@@ -947,17 +1013,24 @@ function submitTrade(){
 
   // Save name
   if(name){stockNames[ticker]=name;saveNames();}
+  // For yahoo mode: also grab name from search/cache
+  if(!isManual){
+    const sn=getName(ticker)||tvCache[ticker]?.name||"";
+    if(sn)stockNames[ticker]=sn;
+  }
 
-  // For manual: save metadata + price
+  // Save metadata (both manual and yahoo modes)
+  const sector=document.getElementById("fSector").value.trim()||getMeta(ticker).sector||"Other";
+  const industry=document.getElementById("fIndustry").value.trim()||sector;
+  const assetType=document.getElementById("fAssetType").value||getMeta(ticker).type||"Stock";
+  const geo=document.getElementById("fGeo").value.trim()||getMeta(ticker).geo||"Other";
+  const risk=document.getElementById("fRisk").value||getMeta(ticker).risk||"Medium";
+  const exchange=document.getElementById("fExchange").value.trim()||getMeta(ticker).exchange||"";
+  tickerMeta[ticker]={sector,industry,type:assetType,geo,risk,exchange,currency};
+  saveMeta();
+
+  // For manual: save price
   if(isManual){
-    const sector=document.getElementById("fSector").value.trim()||"Other";
-    const industry=document.getElementById("fIndustry").value.trim()||sector;
-    const assetType=document.getElementById("fAssetType").value;
-    const geo=document.getElementById("fGeo").value.trim()||"Other";
-    const risk=document.getElementById("fRisk").value;
-    const exchange=document.getElementById("fExchange").value.trim()||"Manual";
-    tickerMeta[ticker]={sector,industry,type:assetType,geo,risk,exchange,currency};
-    saveMeta();
     if(currentPrice!=null&&!isNaN(currentPrice)&&currentPrice>0){
       manualPrices[ticker]={price:currentPrice,currency:currency};
       prices[ticker]={price:currentPrice,change:0,changePct:0,monthAgo:null,yearAgo:null};
@@ -965,7 +1038,17 @@ function submitTrade(){
     }
   }
 
-  trades.push({id:"t-"+Date.now()+"-"+(++idCounter),ticker,type,shares,price,currency,fees,broker,account,date,notes,manual:isManual,name:name||""});
+  const tradeData={ticker,type,shares,price,currency,fees,broker,account,date,notes,manual:isManual,name:name||getName(ticker)||""};
+
+  if(editingTradeId){
+    // Update existing trade
+    const idx=trades.findIndex(t=>t.id===editingTradeId);
+    if(idx>=0){trades[idx]={...trades[idx],...tradeData};}
+    editingTradeId=null;
+  }else{
+    // New trade
+    trades.push({id:"t-"+Date.now()+"-"+(++idCounter),...tradeData});
+  }
   saveTrades();
   ["fTicker","fShares","fPrice","fNotes","fName","fCurrentPrice","fSector","fIndustry","fGeo","fExchange","fSearch"].forEach(id=>{const el=document.getElementById(id);if(el)el.value="";});
   document.getElementById("fType").value="BUY";document.getElementById("fFees").value="0";
