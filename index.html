@@ -49,7 +49,7 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
 .badge-brk{background:rgba(251,191,36,0.08);color:#fbbf24}
 .badge-acc{background:rgba(56,189,248,0.08);color:#38bdf8}
 .type-badge{padding:3px 10px;border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.5px;display:inline-block}
-.type-buy{background:rgba(34,197,94,0.15);color:var(--green)}.type-sell{background:rgba(239,68,68,0.15);color:var(--red)}
+.type-buy{background:rgba(34,197,94,0.15);color:var(--green)}.type-sell{background:rgba(239,68,68,0.15);color:var(--red)}.type-dividend{background:rgba(129,140,248,0.15);color:var(--purple)}
 .empty-msg{padding:40px;text-align:center;color:#3a3f4a;font-size:14px}
 .color-green{color:var(--green)}.color-red{color:var(--red)}.color-dim{color:#8a8f98}
 .form-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:18px;animation:fadeIn .3s ease;overflow:visible;position:relative;z-index:50}
@@ -231,7 +231,7 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
         <div class="form-group hidden" id="fManGeo"><label class="form-label">Geography</label><input class="input" id="fGeo" placeholder="France" list="geoList"><datalist id="geoList"><option value="France"><option value="United States"><option value="Germany"><option value="United Kingdom"><option value="Netherlands"><option value="Switzerland"><option value="Global"><option value="Europe"><option value="Other"></datalist></div>
         <div class="form-group hidden" id="fManRisk"><label class="form-label">Risk</label><select class="input" id="fRisk"><option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option><option value="Very High">Very High</option></select></div>
         <div class="form-group hidden" id="fManExchange"><label class="form-label">Exchange</label><input class="input" id="fExchange" placeholder="Euronext Paris"></div>
-        <div class="form-group"><label class="form-label">Type</label><select class="input" id="fType"><option value="BUY">Buy</option><option value="SELL">Sell</option></select></div>
+        <div class="form-group"><label class="form-label">Type</label><select class="input" id="fType"><option value="BUY">Buy</option><option value="SELL">Sell</option><option value="DIVIDEND">Dividend</option></select></div>
         <div class="form-group"><label class="form-label">Shares</label><input class="input" id="fShares" type="number" step="any" min="0.001" placeholder="100"></div>
         <div class="form-group"><label class="form-label">Price (native ccy)</label><input class="input" id="fPrice" type="number" step="any" min="0.01" placeholder="65.50"></div>
         <div class="form-group"><label class="form-label">Currency</label><select class="input" id="fCurrency"><option value="EUR">EUR €</option><option value="USD">USD $</option><option value="GBP">GBP £</option><option value="CHF">CHF</option><option value="JPY">JPY ¥</option><option value="HKD">HKD</option><option value="SEK">SEK</option><option value="DKK">DKK</option><option value="CAD">CAD</option><option value="AUD">AUD</option></select></div>
@@ -265,6 +265,7 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
       <div class="form-actions"><button class="submit-btn" id="submitSavingsBtn">Save</button><button class="cancel-btn" id="cancelSavingsBtn">Cancel</button></div>
     </div>
     <div id="savingsCards" class="item-cards"></div>
+    <div class="dash-grid" id="savingsCharts" style="margin-top:24px"></div>
   </div>
   <!-- REAL ESTATE TAB -->
   <div id="realestateTab" class="hidden">
@@ -288,6 +289,7 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
       <div class="form-actions"><button class="submit-btn" id="submitReBtn">Save</button><button class="cancel-btn" id="cancelReBtn">Cancel</button></div>
     </div>
     <div id="reCards" class="item-cards"></div>
+    <div class="dash-grid" id="reCharts" style="margin-top:24px"></div>
   </div>
   <!-- GLOBAL OVERVIEW TAB -->
   <div id="globalTab" class="hidden"><div id="globalContent"></div></div>
@@ -354,8 +356,8 @@ onAuthStateChanged(auth,async(user)=>{
 });
 
 /* ═══ Firestore sync ═══ */
-const COLLECTIONS=["trades","savings","realestate","manual","names","fx","meta"];
-const LS_MAP={trades:"folio-trades",savings:"folio-savings",realestate:"folio-realestate",manual:"folio-manual",names:"folio-names",fx:"folio-fx",meta:"folio-meta"};
+const COLLECTIONS=["trades","savings","realestate","manual","names","fx","meta","nwhistory"];
+const LS_MAP={trades:"folio-trades",savings:"folio-savings",realestate:"folio-realestate",manual:"folio-manual",names:"folio-names",fx:"folio-fx",meta:"folio-meta",nwhistory:"folio-nw-history"};
 
 async function loadFromFirestore(uid){
   for(const col of COLLECTIONS){
@@ -422,11 +424,11 @@ const TM={AAPL:{s:"Technology",i:"Consumer Electronics",t:"Stock",g:"United Stat
 /* getMeta is defined in Finnhub section above */
 
 /* ═══ State ═══ */
-const STORAGE_KEY="folio-trades",FX_KEY="folio-fx",MANUAL_KEY="folio-manual",NAMES_KEY="folio-names";
+const STORAGE_KEY="folio-trades",FX_KEY="folio-fx",MANUAL_KEY="folio-manual",NAMES_KEY="folio-names",NW_HISTORY_KEY="folio-nw-history";
 let trades=[],prices={},fxRates={EUR:1},activeTab="portfolio",sortCol="ticker",sortDir="asc";
 let sectorFilter="All",industryFilter="All",brokerFilter="All",accountFilter="All";
 let deleteConfirmId=null,idCounter=0,pricingMode="yahoo";
-let manualPrices={},stockNames={};  // {TICKER: {price,currency}} and {TICKER: "Name"}
+let manualPrices={},stockNames={},nwHistory=[];  // {TICKER: {price,currency}} and {TICKER: "Name"}
 let dashFilters={sector:"All",type:"All",geo:"All",exchange:"All",currency:"All",risk:"All",broker:"All",account:"All"};
 
 /* ═══ Helpers ═══ */
@@ -447,6 +449,8 @@ function loadNames(){try{stockNames=JSON.parse(localStorage.getItem(NAMES_KEY))|
 function saveNames(){localStorage.setItem(NAMES_KEY,JSON.stringify(stockNames));if(window.__folioSaveToCloud)window.__folioSaveToCloud("names",JSON.stringify(stockNames));}
 function getName(tk){return stockNames[tk.toUpperCase()]||"";}
 function isManualTicker(tk){return !!manualPrices[tk.toUpperCase()]||trades.some(t=>t.ticker.toUpperCase()===tk.toUpperCase()&&t.manual);}
+function loadNwHistory(){try{nwHistory=JSON.parse(localStorage.getItem(NW_HISTORY_KEY))||[];}catch{nwHistory=[];}}
+function saveNwHistory(){localStorage.setItem(NW_HISTORY_KEY,JSON.stringify(nwHistory));if(window.__folioSaveToCloud)window.__folioSaveToCloud("nwhistory",JSON.stringify(nwHistory));}
 
 /* ═══ Finnhub API ═══ */
 const FH_KEY="d6gkbt1r01qifrh0fhsgd6gkbt1r01qifrh0fht0";
@@ -552,9 +556,10 @@ function getPositions(){
   const map={};
   trades.forEach(t=>{
     const tk=t.ticker.toUpperCase(),ccy=t.currency||"EUR";
-    if(!map[tk])map[tk]={ticker:tk,shares:0,totalCostEur:0,totalFees:0,brokers:new Set(),accounts:new Set(),manual:false,name:getName(tk),...getMeta(tk)};
+    if(!map[tk])map[tk]={ticker:tk,shares:0,totalCostEur:0,totalFees:0,totalDividends:0,brokers:new Set(),accounts:new Set(),manual:false,name:getName(tk),...getMeta(tk)};
     const priceEur=toEur(t.price,ccy);
     if(t.type==="BUY"){map[tk].totalCostEur+=t.shares*priceEur;map[tk].shares+=t.shares;}
+    else if(t.type==="DIVIDEND"){map[tk].totalDividends+=toEur(t.shares*t.price,ccy);}
     else{const avg=map[tk].shares>0?map[tk].totalCostEur/map[tk].shares:0;map[tk].shares-=t.shares;map[tk].totalCostEur=Math.max(0,map[tk].shares*avg);}
     map[tk].totalFees+=(t.fees||0);
     if(t.broker)map[tk].brokers.add(t.broker);
@@ -587,7 +592,8 @@ function enrichPositions(pos){
     // YTD: current price vs year-ago price (native), as %
     const yearAgo=q&&q.yearAgo?q.yearAgo:null;
     const ytdPct=(prNative!=null&&yearAgo!=null&&yearAgo>0)?((prNative-yearAgo)/yearAgo)*100:null;
-    return{...p,avgCost,breakEven,prNative,prEur,mktV,pnl,pnlPct,dayE,dayPct,dayChgEur,mtdPct,ytdPct};
+    const divYield=(p.totalDividends>0&&mktV>0)?(p.totalDividends/mktV*100):null;
+    return{...p,avgCost,breakEven,prNative,prEur,mktV,pnl,pnlPct,dayE,dayPct,dayChgEur,mtdPct,ytdPct,divYield};
   });
 }
 
@@ -609,12 +615,27 @@ function barCard(title,data,id){
   return'<div class="dash-card" id="'+attr(id)+'"><div class="dash-card-title">'+esc(title)+'</div><div class="bar-chart">'+s.map((d,i)=>'<div class="bar-row"><span class="bar-label">'+esc(d.label)+'</span><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(5,d.value/mx*100)+'%;background:'+COLORS[i%COLORS.length]+'"><span class="bar-fill-text">'+((d.value/tot)*100).toFixed(1)+'%</span></div></div><span class="bar-value">'+eurFmt(d.value)+'</span></div>').join("")+'</div></div>';
 }
 function aggBy(pos,key){const m={};pos.forEach(p=>{const vals=Array.isArray(p[key])?p[key]:[p[key]||"Other"];vals.forEach(v=>{m[v]=(m[v]||0)+(p.mktV||p.totalCostEur);});});return Object.entries(m).map(([l,v])=>({label:l,value:v}));}
+function lineChart(data,w=300,h=200){
+  if(!data.length)return"";
+  const px=data.map(d=>d.total);const mn=Math.min(...px),mx=Math.max(...px),range=mx-mn||1;
+  const pad=30,pw=w-2*pad,ph=h-2*pad;
+  let paths="";const vals=[{label:"Total",key:"total",color:COLORS[0]},{label:"Stocks",key:"stocks",color:COLORS[1]},{label:"Savings",key:"savings",color:COLORS[2]},{label:"Real Estate",key:"realEstate",color:COLORS[3]}];
+  vals.forEach(v=>{let p="";data.forEach((d,i)=>{const val=d[v.key]||0;const y=pad+ph-((val-mn)/range)*ph;const x=pad+(i/(data.length-1||1))*pw;p+=(i===0?"M":"L")+x+","+y;});if(p)paths+='<path d="'+p+'" fill="none" stroke="'+v.color+'" stroke-width="2" opacity="0.7"/>';});
+  const yLabels=[mn,mn+range/2,mx];
+  let svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+" "+h+'" style="font-family:var(--mono);font-size:11px;color:var(--dim)">';
+  svg+='<g stroke="var(--border)" stroke-width="1" opacity="0.5">';yLabels.forEach(yl=>{const y=pad+ph-((yl-mn)/range)*ph;svg+='<line x1="'+pad+'" x2="'+(w-pad)+'" y1="'+y+'" y2="'+y+'"/>';});svg+='</g>';
+  svg+=paths;
+  svg+='<g>';yLabels.forEach((yl,i)=>{const y=pad+ph-((yl-mn)/range)*ph;svg+='<text x="'+(pad-5)+'" y="'+(y+3)+'" text-anchor="end" fill="var(--dim)">'+eurFmt(yl)+'</text>';});svg+='</g>';
+  svg+='</svg>';
+  return svg;
+}
+function snapshotNetWorth(){const pos=getPositions(),enr=enrichPositions(pos);let stocks=0,savBal=0,reEq=0;enr.forEach(p=>{if(p.mktV!=null)stocks+=p.mktV;});savings.forEach(s=>{savBal+=s.balance;});realEstate.forEach(r=>{const loans=r.loans||[];const tl=loans.length?loans.reduce((s,l)=>s+(l.amount||0),0):(r.loan||0);reEq+=(r.value-tl);});const total=stocks+savBal+reEq;const month=new Date().toISOString().split("T")[0].slice(0,7);const existing=nwHistory.find(h=>h.month===month);if(existing){existing.stocks=stocks;existing.savings=savBal;existing.realEstate=reEq;existing.total=total;}else{nwHistory.push({month,stocks,savings:savBal,realEstate:reEq,total});}saveNwHistory();}
 
 /* ═══ Filter builder ═══ */
 function mkF(id,label,opts,cur){return'<div class="filter-group"><label class="filter-label">'+esc(label)+'</label><select class="filter-select" data-fid="'+attr(id)+'">'+opts.map(o=>'<option value="'+attr(o)+'"'+(o===cur?" selected":"")+'>'+esc(o)+'</option>').join("")+'</select></div>';}
 
 /* ═══ Render ═══ */
-const PF_COLS=[{k:"ticker",l:"Ticker"},{k:"shares",l:"Shares"},{k:"avgCost",l:"Avg Cost €"},{k:"breakEven",l:"Break Even €"},{k:"prEur",l:"Price €"},{k:"dayChgEur",l:"Day Chg €"},{k:"dayPct",l:"Day %"},{k:"mtdPct",l:"MTD %"},{k:"ytdPct",l:"YTD %"},{k:"mktV",l:"Mkt Value €"},{k:"pnl",l:"P&L €"},{k:"totalFees",l:"Fees €"}];
+const PF_COLS=[{k:"ticker",l:"Ticker"},{k:"shares",l:"Shares"},{k:"avgCost",l:"Avg Cost €"},{k:"breakEven",l:"Break Even €"},{k:"prEur",l:"Price €"},{k:"dayChgEur",l:"Day Chg €"},{k:"dayPct",l:"Day %"},{k:"mtdPct",l:"MTD %"},{k:"ytdPct",l:"YTD %"},{k:"mktV",l:"Mkt Value €"},{k:"pnl",l:"P&L €"},{k:"totalFees",l:"Fees €"},{k:"totalDividends",l:"Divid. €"}];
 
 function renderSummaryCards(enr,tMkt,tPnL,tPnLPct,tDay,dayPct,tFees){
   const sc=document.getElementById("summaryCards");
@@ -629,7 +650,7 @@ function renderSummaryCards(enr,tMkt,tPnL,tPnLPct,tDay,dayPct,tFees){
   }else if(activeTab==="ledger"){
     ib.classList.add("hidden");
     let tBuys=0,tSells=0,tBuyVal=0,tSellVal=0,tLedgerFees=0,tickers=new Set();
-    trades.forEach(t=>{const val=toEur(t.shares*t.price,t.currency||"EUR");tickers.add(t.ticker);tLedgerFees+=(t.fees||0);if(t.type==="BUY"){tBuys++;tBuyVal+=val;}else{tSells++;tSellVal+=val;}});
+    trades.forEach(t=>{const val=toEur(t.shares*t.price,t.currency||"EUR");tickers.add(t.ticker);tLedgerFees+=(t.fees||0);if(t.type==="BUY"){tBuys++;tBuyVal+=val;}else if(t.type==="SELL"){tSells++;tSellVal+=val;}});
     sc.innerHTML='<div class="card"><span class="card-label">Total Trades</span><span class="card-value">'+trades.length+'</span></div>'+
     '<div class="card"><span class="card-label">Total Invested</span><span class="card-value">'+eurFmt(tBuyVal)+'</span><span class="card-sub">'+tBuys+' buys</span></div>'+
     '<div class="card"><span class="card-label">Total Sold</span><span class="card-value">'+eurFmt(tSellVal)+'</span><span class="card-sub">'+tSells+' sells</span></div>'+
@@ -688,6 +709,7 @@ function render(){
   enr.forEach(p=>{tCost+=p.totalCostEur;if(p.mktV!=null)tMkt+=p.mktV;if(p.dayE!=null)tDay+=p.dayE;tFees+=p.totalFees;});
   const tPnL=tMkt-tCost,tPnLPct=tCost>0?(tPnL/tCost)*100:0,prevV=tMkt-tDay,dayPct=prevV>0?(tDay/prevV)*100:0;
   renderSummaryCards(enr,tMkt,tPnL,tPnLPct,tDay,dayPct,tFees);
+  snapshotNetWorth();
 
   /* Portfolio filters */
   const allSec=["All",...new Set(enr.map(p=>p.sector))];
@@ -707,13 +729,13 @@ function render(){
   document.getElementById("portfolioHead").innerHTML=PF_COLS.map(c=>'<th data-sort="'+c.k+'"><span class="th-inner">'+c.l+(sortCol===c.k?'<span class="sort-arrow">'+(sortDir==="asc"?"↑":"↓")+"</span>":"")+"</span></th>").join("");
   const pb=document.getElementById("portfolioBody");
   if(!fil.length)pb.innerHTML='<tr><td colspan="'+PF_COLS.length+'" class="empty-msg">No positions yet.</td></tr>';
-  else pb.innerHTML=fil.map(p=>'<tr><td class="td-ticker">'+esc(p.ticker)+(p.currency!=="EUR"?'<span class="fx-badge">'+esc(p.currency)+"</span>":"")+(p.manual?'<span class="manual-badge">MANUAL</span>':"")+(p.name?'<span class="td-name" title="'+attr(p.name)+'">'+esc(p.name)+"</span>":"")+(p.manual?'<br><button class="update-price-btn" data-update-price="'+attr(p.ticker)+'">Update Price</button>':"")+'</td><td class="td-num">'+(p.shares%1===0?p.shares.toLocaleString():p.shares.toLocaleString(undefined,{maximumFractionDigits:4}))+'</td><td class="td-num">'+eurFmt(p.avgCost)+'</td><td class="td-num">'+eurFmt(p.breakEven)+'</td><td class="td-num">'+eurFmt(p.prEur)+'</td><td class="td-num '+pnlCls(p.dayChgEur)+'">'+(p.dayChgEur!=null?eurFmt(p.dayChgEur):"—")+'</td><td class="td-num '+pnlCls(p.dayPct)+'">'+(p.dayPct!=null?fmtPct(p.dayPct):"—")+'</td><td class="td-num '+pnlCls(p.mtdPct)+'">'+(p.mtdPct!=null?fmtPct(p.mtdPct):"—")+'</td><td class="td-num '+pnlCls(p.ytdPct)+'">'+(p.ytdPct!=null?fmtPct(p.ytdPct):"—")+'</td><td class="td-num">'+eurFmt(p.mktV)+'</td><td class="td-num '+pnlCls(p.pnl)+'">'+(p.pnl!=null?eurFmt(p.pnl)+"<small>"+fmtPct(p.pnlPct)+"</small>":"—")+'</td><td class="td-num">'+eurFmt(p.totalFees)+"</td></tr>").join("");
+  else pb.innerHTML=fil.map(p=>'<tr><td class="td-ticker">'+esc(p.ticker)+(p.currency!=="EUR"?'<span class="fx-badge">'+esc(p.currency)+"</span>":"")+(p.manual?'<span class="manual-badge">MANUAL</span>':"")+(p.name?'<span class="td-name" title="'+attr(p.name)+'">'+esc(p.name)+"</span>":"")+(p.manual?'<br><button class="update-price-btn" data-update-price="'+attr(p.ticker)+'">Update Price</button>':"")+'</td><td class="td-num">'+(p.shares%1===0?p.shares.toLocaleString():p.shares.toLocaleString(undefined,{maximumFractionDigits:4}))+'</td><td class="td-num">'+eurFmt(p.avgCost)+'</td><td class="td-num">'+eurFmt(p.breakEven)+'</td><td class="td-num">'+eurFmt(p.prEur)+'</td><td class="td-num '+pnlCls(p.dayChgEur)+'">'+(p.dayChgEur!=null?eurFmt(p.dayChgEur):"—")+'</td><td class="td-num '+pnlCls(p.dayPct)+'">'+(p.dayPct!=null?fmtPct(p.dayPct):"—")+'</td><td class="td-num '+pnlCls(p.mtdPct)+'">'+(p.mtdPct!=null?fmtPct(p.mtdPct):"—")+'</td><td class="td-num '+pnlCls(p.ytdPct)+'">'+(p.ytdPct!=null?fmtPct(p.ytdPct):"—")+'</td><td class="td-num">'+eurFmt(p.mktV)+'</td><td class="td-num '+pnlCls(p.pnl)+'">'+(p.pnl!=null?eurFmt(p.pnl)+"<small>"+fmtPct(p.pnlPct)+"</small>":"—")+'</td><td class="td-num">'+eurFmt(p.totalFees)+"</td><td class=\"td-num\">"+eurFmt(p.totalDividends)+"</td></tr>").join("");
 
   /* Ledger */
   updateBrokerList();
   const lb=document.getElementById("ledgerBody");
   if(!trades.length)lb.innerHTML='<tr><td colspan="12" class="empty-msg">No trades yet.</td></tr>';
-  else lb.innerHTML=[...trades].reverse().map(t=>{const totE=toEur(t.shares*t.price,t.currency||"EUR");const nm=t.name||getName(t.ticker);return'<tr><td>'+esc(t.date)+'</td><td class="td-ticker">'+esc(t.ticker)+(nm?'<span class="td-name" title="'+attr(nm)+'">'+esc(nm)+"</span>":"")+'</td><td><span class="type-badge '+(t.type==="BUY"?"type-buy":"type-sell")+'">'+esc(t.type)+'</span></td><td class="td-num">'+t.shares.toLocaleString()+'</td><td class="td-num">'+t.price.toLocaleString("fr-FR",{minimumFractionDigits:2})+'</td><td>'+esc(t.currency||"EUR")+'</td><td class="td-num">'+eurFmt(totE)+'</td><td class="td-num">'+eurFmt(t.fees||0)+'</td><td>'+(t.broker?'<span class="badge badge-brk">'+esc(t.broker)+"</span>":"—")+'</td><td>'+(t.account?'<span class="badge badge-acc">'+esc(t.account)+"</span>":"—")+'</td><td>'+(t.notes?esc(t.notes):"—")+"</td><td>"+(deleteConfirmId===t.id?'<div class="confirm-row"><button class="confirm-yes" data-delete="'+attr(t.id)+'">Yes</button><button class="confirm-no" data-cancel-delete>No</button></div>':'<div class="action-row"><button class="edit-btn" data-edit-trade="'+attr(t.id)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="delete-btn" data-confirm="'+attr(t.id)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button></div>')+"</td></tr>";}).join("");
+  else lb.innerHTML=[...trades].reverse().map(t=>{const totE=toEur(t.shares*t.price,t.currency||"EUR");const nm=t.name||getName(t.ticker);return'<tr><td>'+esc(t.date)+'</td><td class="td-ticker">'+esc(t.ticker)+(nm?'<span class="td-name" title="'+attr(nm)+'">'+esc(nm)+"</span>":"")+'</td><td><span class="type-badge '+(t.type==="BUY"?"type-buy":t.type==="SELL"?"type-sell":"type-dividend")+'">'+esc(t.type)+'</span></td><td class="td-num">'+t.shares.toLocaleString()+'</td><td class="td-num">'+t.price.toLocaleString("fr-FR",{minimumFractionDigits:2})+'</td><td>'+esc(t.currency||"EUR")+'</td><td class="td-num">'+eurFmt(totE)+'</td><td class="td-num">'+eurFmt(t.fees||0)+'</td><td>'+(t.broker?'<span class="badge badge-brk">'+esc(t.broker)+"</span>":"—")+'</td><td>'+(t.account?'<span class="badge badge-acc">'+esc(t.account)+"</span>":"—")+'</td><td>'+(t.notes?esc(t.notes):"—")+"</td><td>"+(deleteConfirmId===t.id?'<div class="confirm-row"><button class="confirm-yes" data-delete="'+attr(t.id)+'">Yes</button><button class="confirm-no" data-cancel-delete>No</button></div>':'<div class="action-row"><button class="edit-btn" data-edit-trade="'+attr(t.id)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="delete-btn" data-confirm="'+attr(t.id)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button></div>')+"</td></tr>";}).join("");
 
   renderDash(enr);
   renderSavings();
@@ -729,7 +751,8 @@ function renderDash(all){
   Object.entries(dashFilters).forEach(([k,v])=>{if(v==="All")return;const key=k==="broker"?"brokers":k==="account"?"accounts":k;f=f.filter(p=>Array.isArray(p[key])?p[key].includes(v):(p[key]||"Other")===v);});
   const g=document.getElementById("dashGrid");
   if(!f.length){g.innerHTML='<div class="dash-card" style="grid-column:1/-1"><div class="dash-empty">No positions match filters.</div></div>';return;}
-  g.innerHTML=[chartCard("By Sector",aggBy(f,"sector"),"cS"),chartCard("By Industry",aggBy(f,"industry"),"cI"),chartCard("By Type",aggBy(f,"type"),"cT"),chartCard("By Geography",aggBy(f,"geo"),"cG"),barCard("By Risk",aggBy(f,"risk"),"cR"),chartCard("By Exchange",aggBy(f,"exchange"),"cE"),chartCard("By Currency",aggBy(f,"currency"),"cC"),chartCard("By Broker",aggBy(f,"brokers"),"cB"),chartCard("By Account",aggBy(f,"accounts"),"cA"),barCard("Top Holdings",f.map(p=>({label:p.ticker+(p.name?" — "+p.name:""),value:p.mktV||p.totalCostEur})).sort((a,b)=>b.value-a.value).slice(0,10),"cH")].join("");
+  let tMkt=0,tCost=0;f.forEach(p=>{if(p.mktV!=null)tMkt+=p.mktV;tCost+=p.totalCostEur+p.totalFees;});
+  g.innerHTML=[barCard("Portfolio Value vs Breakeven",[{label:"Market Value",value:tMkt},{label:"Breakeven Value",value:tCost}],"cPVB"),chartCard("By Sector",aggBy(f,"sector"),"cS"),chartCard("By Industry",aggBy(f,"industry"),"cI"),chartCard("By Type",aggBy(f,"type"),"cT"),chartCard("By Geography",aggBy(f,"geo"),"cG"),barCard("By Risk",aggBy(f,"risk"),"cR"),chartCard("By Exchange",aggBy(f,"exchange"),"cE"),chartCard("By Currency",aggBy(f,"currency"),"cC"),chartCard("By Broker",aggBy(f,"brokers"),"cB"),chartCard("By Account",aggBy(f,"accounts"),"cA"),barCard("Top Holdings",f.map(p=>({label:p.ticker+(p.name?" — "+p.name:""),value:p.mktV||p.totalCostEur})).sort((a,b)=>b.value-a.value).slice(0,10),"cH")].join("");
 }
 
 function updateBrokerList(){const dl=document.getElementById("brokerList");const bs=[...new Set(trades.map(t=>t.broker).filter(Boolean))];dl.innerHTML=bs.map(b=>'<option value="'+attr(b)+'">').join("");}
@@ -1163,7 +1186,8 @@ function editSaving(id){
 
 function renderSavings(){
   const c=document.getElementById("savingsCards");
-  if(!savings.length){c.innerHTML='<div class="empty-msg">No savings accounts yet.</div>';return;}
+  const charts=document.getElementById("savingsCharts");
+  if(!savings.length){c.innerHTML='<div class="empty-msg">No savings accounts yet.</div>';charts.innerHTML='';return;}
   const bankList=document.getElementById("bankList");
   bankList.innerHTML=[...new Set(savings.map(s=>s.bank).filter(Boolean))].map(b=>'<option value="'+attr(b)+'">').join("");
   let totalBal=0,totalInterest=0;
@@ -1177,6 +1201,12 @@ function renderSavings(){
     (s.recurringDeposit?'<div class="item-card-row"><span class="label">Recurring Deposit</span><span class="value">'+eurFmt(s.recurringDeposit)+'/mo</span></div>':"")+
     '<div class="item-card-row"><span class="label">Interest Rate</span><span class="value">'+(s.rate||0).toFixed(2)+'%</span></div><div class="item-card-row"><span class="label">Annual Interest</span><span class="value color-green">'+eurFmt(annual)+'</span></div>'+(s.notes?'<div class="item-card-row"><span class="label">Notes</span><span class="value" style="color:var(--dim);font-weight:400;font-size:11px">'+esc(s.notes)+'</span></div>':"")+'</div><div class="item-card-actions"><button class="edit-btn" data-edit-saving="'+attr(s.id)+'">Edit</button><button class="delete-btn" data-del-saving="'+attr(s.id)+'">Delete</button></div></div>';
   }).join("");
+  const m1={},m2={},m3={};
+  savings.forEach(s=>{m1[s.type]=(m1[s.type]||0)+s.balance;if(s.bank)m2[s.bank]=(m2[s.bank]||0)+s.balance;if(s.risk)m3[s.risk]=(m3[s.risk]||0)+s.balance;});
+  const byType=Object.entries(m1).map(([l,v])=>({label:l,value:v}));
+  const byBank=Object.entries(m2).map(([l,v])=>({label:l,value:v}));
+  const byRisk=Object.entries(m3).map(([l,v])=>({label:l,value:v}));
+  charts.innerHTML=[chartCard("By Account Type",byType,"sByType"),chartCard("By Bank",byBank,"sByBank"),chartCard("By Risk",byRisk,"sByRisk")].join("");
 }
 
 /* ═══ REAL ESTATE ═══ */
@@ -1252,7 +1282,8 @@ function editRe(id){
 
 function renderRe(){
   const c=document.getElementById("reCards");
-  if(!realEstate.length){c.innerHTML='<div class="empty-msg">No properties yet.</div>';return;}
+  const charts=document.getElementById("reCharts");
+  if(!realEstate.length){c.innerHTML='<div class="empty-msg">No properties yet.</div>';charts.innerHTML='';return;}
   c.innerHTML=realEstate.map(r=>{
     /* Migrate old single-loan format to loans array */
     let loans=r.loans||[];
@@ -1267,7 +1298,11 @@ function renderRe(){
     if(loans.length>0){
       loansHtml+='<div class="item-card-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)"><span class="label" style="font-weight:700;color:var(--bright)">Loans ('+loans.length+')</span><span class="value color-red">'+eurFmt(totalLoan)+'</span></div>';
       loans.forEach((l,i)=>{
+        let remMonths=0,totalInt=0;
+        if(!l.rate||l.rate===0){remMonths=l.monthly>0?Math.ceil(l.amount/l.monthly):0;}else{const monthlyRate=l.rate/100/12;if(monthlyRate>0&&l.monthly>0){const num=Math.log(l.monthly/(l.monthly-l.amount*monthlyRate));const den=Math.log(1+monthlyRate);remMonths=num/den>0?Math.ceil(num/den):0;}}
+        totalInt=l.monthly*remMonths-l.amount;
         loansHtml+='<div class="item-card-row" style="padding-left:12px"><span class="label" style="font-size:11px">'+esc(l.name||("Loan "+(i+1)))+'</span><span class="value" style="font-size:11px">'+eurFmt(l.amount)+" · "+(l.rate||0).toFixed(2)+"% · "+eurFmt(l.monthly)+'/mo</span></div>';
+        loansHtml+='<div class="item-card-row" style="padding-left:12px;font-size:10px;color:var(--dim)"><span class="label">'+remMonths+' months remaining · Interest: '+eurFmt(totalInt)+'</span></div>';
       });
       loansHtml+='<div class="item-card-row"><span class="label">Total Monthly Payment</span><span class="value">'+eurFmt(totalMonthly)+'</span></div>';
     }
@@ -1284,6 +1319,11 @@ function renderRe(){
     (r.notes?'<div class="item-card-row"><span class="label">Notes</span><span class="value" style="color:var(--dim);font-weight:400;font-size:11px">'+esc(r.notes)+'</span></div>':'')+
     '</div><div class="item-card-actions"><button class="edit-btn" data-edit-re="'+attr(r.id)+'">Edit</button><button class="delete-btn" data-del-re="'+attr(r.id)+'">Delete</button></div></div>';
   }).join("");
+  const m1={},m2={};let totalEquity=0,totalLoans=0;
+  realEstate.forEach(r=>{m1[r.type]=(m1[r.type]||0)+r.value;const loans=r.loans||[];const tl=loans.length?loans.reduce((s,l)=>s+(l.amount||0),0):(r.loan||0);totalEquity+=(r.value-tl);totalLoans+=tl;if(r.rented)m2["Rented"]=(m2["Rented"]||0)+r.value;else m2["Not Rented"]=(m2["Not Rented"]||0)+r.value;});
+  const byType=Object.entries(m1).map(([l,v])=>({label:l,value:v}));
+  const byStatus=Object.entries(m2).map(([l,v])=>({label:l,value:v}));
+  charts.innerHTML=[chartCard("By Property Type",byType,"rByType"),chartCard("By Rented Status",byStatus,"rByStatus"),chartCard("Equity vs Loans",[{label:"Equity",value:totalEquity},{label:"Loans",value:totalLoans}],"rEqLoan")].join("");
 }
 
 /* ═══ GLOBAL OVERVIEW ═══ */
@@ -1291,8 +1331,8 @@ function renderGlobal(){
   const gc=document.getElementById("globalContent");
   // Stocks
   const pos=getPositions(),enr=enrichPositions(pos);
-  let stockValue=0,stockCost=0,stockFees=0;
-  enr.forEach(p=>{if(p.mktV!=null)stockValue+=p.mktV;stockCost+=p.totalCostEur;stockFees+=p.totalFees;});
+  let stockValue=0,stockCost=0,stockFees=0,totalDividends=0;
+  enr.forEach(p=>{if(p.mktV!=null)stockValue+=p.mktV;stockCost+=p.totalCostEur;stockFees+=p.totalFees;totalDividends+=p.totalDividends||0;});
   const stockPnL=stockValue-stockCost;
   // Savings
   let savTotal=0,savInterest=0;
@@ -1305,7 +1345,7 @@ function renderGlobal(){
   const netWorth=stockValue+savTotal+reEquity;
   const totalAssets=stockValue+savTotal+reGrossValue;
   const totalLiabilities=reLoans;
-  const annualIncome=savInterest+reAnnRent;
+  const annualIncome=savInterest+reAnnRent+totalDividends;
   const annualCost=reAnnCost+stockFees;
 
   gc.innerHTML='<div class="net-worth-card"><div class="net-worth-label">Net Worth</div><div class="net-worth-value">'+eurFmt(netWorth)+'</div></div>'+
@@ -1342,7 +1382,8 @@ function renderGlobal(){
   '<div class="card"><span class="card-label">Properties</span><span class="card-value">'+realEstate.length+'</span></div>'+
   '<div class="card"><span class="card-label">Annual Rent Income</span><span class="card-value color-green">'+eurFmt(reAnnRent)+'</span></div>'+
   '<div class="card"><span class="card-label">Annual Cashflow</span><span class="card-value '+pnlCls(reAnnCashflow)+'">'+eurFmt(reAnnCashflow)+'</span><span class="card-sub '+pnlCls(reAnnCashflow)+'">'+eurFmt(reAnnCashflow/12)+'/mo</span></div>'+
-  '</div></div>';
+  '</div></div>'+
+  (nwHistory.length>1?'<div class="global-section"><div class="global-section-title">Net Worth History</div><div class="dash-card" style="grid-column:1/-1"><div class="dash-card-title">Monthly Net Worth Trend</div><div style="overflow-x:auto;padding:14px">'+lineChart(nwHistory.slice(-12))+'</div></div></div>':'');
 }
 
 /* ═══ Market Indices ═══ */
@@ -1384,7 +1425,7 @@ async function fetchIndices(){
 
 /* ═══ Init ═══ */
 function initApp(){
-  loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();loadMeta();
+  loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();loadMeta();loadNwHistory();
   trades.forEach(t=>{if(t.name&&!stockNames[t.ticker.toUpperCase()]){stockNames[t.ticker.toUpperCase()]=t.name;}});
   document.getElementById("fDate").value=new Date().toISOString().split("T")[0];
   initSearchListener();
@@ -1392,7 +1433,7 @@ function initApp(){
 }
 // Expose reload for cross-device sync
 window.__folioReload=function(){
-  loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();loadMeta();
+  loadTrades();loadFx();loadManual();loadNames();loadSavingsData();loadReData();loadMeta();loadNwHistory();
   trades.forEach(t=>{if(t.name&&!stockNames[t.ticker.toUpperCase()]){stockNames[t.ticker.toUpperCase()]=t.name;}});
   render();
 };
