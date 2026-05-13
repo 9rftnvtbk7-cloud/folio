@@ -124,6 +124,7 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
 .item-card-row{display:flex;justify-content:space-between;align-items:center;font-size:13px}
 .item-card-row .label{color:var(--dim)}.item-card-row .value{font-family:var(--mono);color:var(--bright);font-weight:600}
 .item-card-actions{display:flex;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.positions-detail{animation:fadeIn .2s ease}
 .edit-btn{background:rgba(110,231,183,0.08);border:1px solid rgba(110,231,183,0.18);color:var(--accent);padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans)}
 .edit-btn:hover{background:rgba(110,231,183,0.15)}
 .badge-rented{background:rgba(34,197,94,0.12);color:var(--green);padding:3px 8px;border-radius:5px;font-size:10px;font-weight:700}
@@ -260,6 +261,13 @@ td{padding:11px 14px;vertical-align:middle;white-space:nowrap}
         <div class="form-group"><label class="form-label">Interest Rate (%/yr)</label><input class="input" id="sRate" type="number" step="any" min="0" placeholder="3.0"></div>
         <div class="form-group"><label class="form-label">Risk</label><select class="input" id="sRisk"><option value="Low">Low</option><option value="Medium" selected>Medium</option><option value="High">High</option><option value="Very High">Very High</option></select></div>
         <div class="form-group"><label class="form-label">Notes</label><input class="input" id="sNotes" placeholder="Optional"></div>
+      </div>
+      <div id="sPositionsSection" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span class="form-label" style="font-size:12px;font-weight:700;color:var(--bright)">Positions</span>
+          <button type="button" class="edit-btn" id="addPositionBtn" style="font-size:11px">+ Add Position</button>
+        </div>
+        <div id="sPositionsContainer"></div>
       </div>
       <div class="error-msg hidden" id="savingsError"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span id="savingsErrorText"></span></div>
       <div class="form-actions"><button class="submit-btn" id="submitSavingsBtn">Save</button><button class="cancel-btn" id="cancelSavingsBtn">Cancel</button></div>
@@ -629,7 +637,7 @@ function lineChart(data,w=300,h=200){
   svg+='</svg>';
   return svg;
 }
-function snapshotNetWorth(){const pos=getPositions(),enr=enrichPositions(pos);let stocks=0,savBal=0,reEq=0;enr.forEach(p=>{if(p.mktV!=null)stocks+=p.mktV;});savings.forEach(s=>{savBal+=s.balance;});realEstate.forEach(r=>{const loans=r.loans||[];const tl=loans.length?loans.reduce((s,l)=>s+(l.amount||0),0):(r.loan||0);reEq+=(r.value-tl);});const total=stocks+savBal+reEq;const month=new Date().toISOString().split("T")[0].slice(0,7);const existing=nwHistory.find(h=>h.month===month);if(existing){existing.stocks=stocks;existing.savings=savBal;existing.realEstate=reEq;existing.total=total;}else{nwHistory.push({month,stocks,savings:savBal,realEstate:reEq,total});}saveNwHistory();}
+function snapshotNetWorth(){const pos=getPositions(),enr=enrichPositions(pos);let stocks=0,savBal=0,reEq=0;enr.forEach(p=>{if(p.mktV!=null)stocks+=p.mktV;});savings.forEach(s=>{const positions=s.positions||[];savBal+=positions.length>0?positions.reduce((sum,p)=>sum+(p.currentValue||0),0):s.balance;});realEstate.forEach(r=>{const loans=r.loans||[];const tl=loans.length?loans.reduce((s,l)=>s+(l.amount||0),0):(r.loan||0);reEq+=(r.value-tl);});const total=stocks+savBal+reEq;const month=new Date().toISOString().split("T")[0].slice(0,7);const existing=nwHistory.find(h=>h.month===month);if(existing){existing.stocks=stocks;existing.savings=savBal;existing.realEstate=reEq;existing.total=total;}else{nwHistory.push({month,stocks,savings:savBal,realEstate:reEq,total});}saveNwHistory();}
 
 /* ═══ Filter builder ═══ */
 function mkF(id,label,opts,cur){return'<div class="filter-group"><label class="filter-label">'+esc(label)+'</label><select class="filter-select" data-fid="'+attr(id)+'">'+opts.map(o=>'<option value="'+attr(o)+'"'+(o===cur?" selected":"")+'>'+esc(o)+'</option>').join("")+'</select></div>';}
@@ -670,7 +678,7 @@ function renderSummaryCards(enr,tMkt,tPnL,tPnLPct,tDay,dayPct,tFees){
     '<div class="card"><span class="card-label">Avg Risk</span><span class="card-value" style="font-size:13px">'+riskLabel+'</span></div>';
   }else if(activeTab==="savings"){
     ib.classList.add("hidden");
-    let savBal=0,savInt=0;savings.forEach(s=>{savBal+=s.balance;savInt+=s.balance*(s.rate||0)/100;});
+    let savBal=0,savInt=0;savings.forEach(s=>{const positions=s.positions||[];const bal=positions.length>0?positions.reduce((sum,p)=>sum+(p.currentValue||0),0):s.balance;savBal+=bal;savInt+=bal*(s.rate||0)/100;});
     const avgRate=savBal>0?(savInt/savBal*100):0;
     let totalRecurring=0;savings.forEach(s=>{totalRecurring+=(s.recurringDeposit||0);});
     sc.innerHTML='<div class="card"><span class="card-label">Total Balance</span><span class="card-value">'+eurFmt(savBal)+'</span></div>'+
@@ -690,7 +698,7 @@ function renderSummaryCards(enr,tMkt,tPnL,tPnLPct,tDay,dayPct,tFees){
     '<div class="card"><span class="card-label">Annual Cashflow</span><span class="card-value '+pnlCls(reCf)+'">'+eurFmt(reCf)+'</span></div>';
   }else if(activeTab==="global"){
     ib.classList.add("hidden");
-    let savBal2=0;savings.forEach(s=>{savBal2+=s.balance;});
+    let savBal2=0;savings.forEach(s=>{const positions=s.positions||[];savBal2+=positions.length>0?positions.reduce((sum,p)=>sum+(p.currentValue||0),0):s.balance;});
     let reEq2=0;realEstate.forEach(r=>{const loans=r.loans||[];const totalLoan=loans.reduce((s,l)=>s+(l.amount||0),0);reEq2+=(r.value-totalLoan);});
     const nw=tMkt+savBal2+reEq2;
     sc.innerHTML='<div class="card"><span class="card-label">Net Worth</span><span class="card-value" style="color:var(--accent)">'+eurFmt(nw)+'</span></div>'+
@@ -929,6 +937,9 @@ document.addEventListener("click",e=>{
   if(e.target.closest("#addRealEstateBtn")){toggleReForm();return;}
   if(e.target.closest("#submitReBtn")){submitRe();return;}
   if(e.target.closest("#cancelReBtn")){hideReForm();return;}
+  if(e.target.closest("#addPositionBtn")){addPositionRow();return;}
+  const rpb=e.target.closest(".removePositionBtn");if(rpb){removePositionRow(parseInt(rpb.dataset.posIdx));return;}
+  const tp=e.target.closest("[data-toggle-positions]");if(tp){const detail=document.getElementById("posDetail_"+tp.dataset.togglePositions);if(detail){detail.classList.toggle("hidden");tp.querySelector(".value").textContent=detail.classList.contains("hidden")?"▶ Show details":"▼ Hide details";}return;}
   if(e.target.closest("#addLoanBtn")){addLoanRow();return;}
   const rlb=e.target.closest(".removeLoanBtn");if(rlb){removeLoanRow(parseInt(rlb.dataset.loanIdx));return;}
   /* Edit/Delete savings */
@@ -1154,20 +1165,70 @@ function saveSavingsData(){localStorage.setItem(SAV_KEY,JSON.stringify(savings))
 
 function toggleSavingsForm(){const f=document.getElementById("savingsForm");f.classList.toggle("hidden");if(!f.classList.contains("hidden")){clearSavingsForm();document.getElementById("sName").focus();}document.getElementById("savingsError").classList.add("hidden");editingSavingId=null;}
 function hideSavingsForm(){document.getElementById("savingsForm").classList.add("hidden");document.getElementById("savingsError").classList.add("hidden");editingSavingId=null;clearSavingsForm();}
-function clearSavingsForm(){["sName","sBank","sInitDeposit","sInitCost","sRecurring","sBalance","sRate","sNotes"].forEach(id=>document.getElementById(id).value="");document.getElementById("sType").value="Compte Courant";document.getElementById("sRisk").value="Medium";}
+function clearSavingsForm(){["sName","sBank","sInitDeposit","sInitCost","sRecurring","sBalance","sRate","sNotes"].forEach(id=>document.getElementById(id).value="");document.getElementById("sType").value="Compte Courant";document.getElementById("sRisk").value="Medium";document.getElementById("sPositionsContainer").innerHTML="";sFormPositions=[];}
+
+let sFormPositions=[];
+let sFormPositionCounter=0;
+
+function addPositionRow(pos){
+  const idx=sFormPositionCounter++;
+  sFormPositions.push(idx);
+  const row=document.createElement("div");
+  row.className="form-grid";row.id="sPosRow_"+idx;row.style.marginBottom="8px";row.style.padding="10px";row.style.background="rgba(255,255,255,0.02)";row.style.borderRadius="8px";row.style.border="1px solid var(--border)";
+  row.innerHTML='<div class="form-group"><label class="form-label">Position Name</label><input class="input sPosName" placeholder="Fonds Euro" value="'+attr((pos&&pos.name)||"")+'"></div>'+
+  '<div class="form-group"><label class="form-label">Position Type</label><select class="input sPosType"><option value="Fonds Euro"'+(pos&&pos.type==="Fonds Euro"?" selected":"")+'>Fonds Euro</option><option value="Obligations"'+(pos&&pos.type==="Obligations"?" selected":"")+'>Obligations</option><option value="Actions"'+(pos&&pos.type==="Actions"?" selected":"")+'>Actions</option><option value="Immobilier"'+(pos&&pos.type==="Immobilier"?" selected":"")+'>Immobilier</option><option value="Monétaire"'+(pos&&pos.type==="Monétaire"?" selected":"")+'>Monétaire</option><option value="Multi-Asset"'+(pos&&pos.type==="Multi-Asset"?" selected":"")+'>Multi-Asset</option><option value="Other"'+(pos&&pos.type==="Other"?" selected":"")+'>Other</option></select></div>'+
+  '<div class="form-group"><label class="form-label">Invested (€)</label><input class="input sPosInvested" type="number" step="any" min="0" placeholder="5000" value="'+(pos?pos.amountInvested||0:"")+'"></div>'+
+  '<div class="form-group"><label class="form-label">Current Value (€)</label><input class="input sPosValue" type="number" step="any" min="0" placeholder="5200" value="'+(pos?pos.currentValue||0:"")+'"></div>'+
+  '<div class="form-group"><label class="form-label">Risk</label><select class="input sPosRisk"><option value="Low"'+(pos&&pos.risk==="Low"?" selected":"")+'>Low</option><option value="Medium"'+((!pos||pos.risk==="Medium")?" selected":"")+'>Medium</option><option value="High"'+(pos&&pos.risk==="High"?" selected":"")+'>High</option><option value="Very High"'+(pos&&pos.risk==="Very High"?" selected":"")+'>Very High</option></select></div>'+
+  '<div class="form-group"><label class="form-label">Notes</label><input class="input sPosNotes" placeholder="Optional" value="'+attr((pos&&pos.notes)||"")+'"></div>'+
+  '<div class="form-group" style="justify-content:flex-end"><button type="button" class="delete-btn removePositionBtn" data-pos-idx="'+idx+'" style="margin-top:18px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg> Remove</button></div>';
+  document.getElementById("sPositionsContainer").appendChild(row);
+}
+
+function removePositionRow(idx){
+  const row=document.getElementById("sPosRow_"+idx);if(row)row.remove();
+  sFormPositions=sFormPositions.filter(i=>i!==idx);
+}
+
+function getFormPositions(){
+  const positions=[];
+  sFormPositions.forEach(idx=>{
+    const row=document.getElementById("sPosRow_"+idx);if(!row)return;
+    const name=row.querySelector(".sPosName").value.trim();
+    const type=row.querySelector(".sPosType").value;
+    const amountInvested=parseFloat(row.querySelector(".sPosInvested").value)||0;
+    const currentValue=parseFloat(row.querySelector(".sPosValue").value)||0;
+    const risk=row.querySelector(".sPosRisk").value;
+    const notes=row.querySelector(".sPosNotes").value.trim();
+    if(name||currentValue>0)positions.push({name:name||("Position "+(positions.length+1)),type,amountInvested,currentValue,risk,notes});
+  });
+  return positions;
+}
 
 function submitSavings(){
   const name=document.getElementById("sName").value.trim(),type=document.getElementById("sType").value;
-  const bank=document.getElementById("sBank").value.trim(),balance=parseFloat(document.getElementById("sBalance").value);
-  const rate=parseFloat(document.getElementById("sRate").value)||0,notes=document.getElementById("sNotes").value;
+  const bank=document.getElementById("sBank").value.trim(),notes=document.getElementById("sNotes").value;
   const initDeposit=parseFloat(document.getElementById("sInitDeposit").value)||0;
   const initCost=parseFloat(document.getElementById("sInitCost").value)||0;
   const recurringDeposit=parseFloat(document.getElementById("sRecurring").value)||0;
-  const risk=document.getElementById("sRisk").value;
+  const positions=getFormPositions();
+  let balance,rate,risk;
+  if(positions.length>0){
+    balance=positions.reduce((s,p)=>s+(p.currentValue||0),0);
+    rate=parseFloat(document.getElementById("sRate").value)||0;
+    const rv={"Low":1,"Medium":2,"High":3,"Very High":4};const rl={1:"Low",2:"Medium",3:"High",4:"Very High"};
+    const totalVal=positions.reduce((s,p)=>s+(p.currentValue||0),0);
+    const avgR=totalVal>0?positions.reduce((s,p)=>s+((rv[p.risk]||2)*(p.currentValue||0)),0)/totalVal:2;
+    risk=rl[Math.round(avgR)]||"Medium";
+  }else{
+    balance=parseFloat(document.getElementById("sBalance").value);
+    rate=parseFloat(document.getElementById("sRate").value)||0;
+    risk=document.getElementById("sRisk").value;
+  }
   if(!name){document.getElementById("savingsError").classList.remove("hidden");document.getElementById("savingsErrorText").textContent="Account name required";return;}
-  if(isNaN(balance)){document.getElementById("savingsError").classList.remove("hidden");document.getElementById("savingsErrorText").textContent="Balance required";return;}
-  if(editingSavingId){const s=savings.find(x=>x.id===editingSavingId);if(s){s.name=name;s.type=type;s.bank=bank;s.balance=balance;s.rate=rate;s.notes=notes;s.initDeposit=initDeposit;s.initCost=initCost;s.recurringDeposit=recurringDeposit;s.risk=risk;}}
-  else savings.push({id:"s-"+Date.now(),name,type,bank,balance,rate,notes,initDeposit,initCost,recurringDeposit,risk});
+  if(positions.length===0&&isNaN(balance)){document.getElementById("savingsError").classList.remove("hidden");document.getElementById("savingsErrorText").textContent="Balance required (or add positions)";return;}
+  if(editingSavingId){const s=savings.find(x=>x.id===editingSavingId);if(s){s.name=name;s.type=type;s.bank=bank;s.balance=balance;s.rate=rate;s.notes=notes;s.initDeposit=initDeposit;s.initCost=initCost;s.recurringDeposit=recurringDeposit;s.risk=risk;s.positions=positions;}}
+  else savings.push({id:"s-"+Date.now(),name,type,bank,balance,rate,notes,initDeposit,initCost,recurringDeposit,risk,positions});
   saveSavingsData();hideSavingsForm();render();
 }
 
@@ -1182,6 +1243,10 @@ function editSaving(id){
   document.getElementById("sInitCost").value=s.initCost||"";
   document.getElementById("sRecurring").value=s.recurringDeposit||"";
   document.getElementById("sRisk").value=s.risk||"Medium";
+  /* Populate positions */
+  document.getElementById("sPositionsContainer").innerHTML="";sFormPositions=[];sFormPositionCounter=0;
+  const positions=s.positions||[];
+  positions.forEach(p=>addPositionRow(p));
 }
 
 function renderSavings(){
@@ -1193,20 +1258,66 @@ function renderSavings(){
   let totalBal=0,totalInterest=0;
   const riskColors={"Low":"var(--green)","Medium":"var(--accent)","High":"#fbbf24","Very High":"var(--red)"};
   c.innerHTML=savings.map(s=>{
-    totalBal+=s.balance;const annual=s.balance*(s.rate||0)/100;totalInterest+=annual;
-    const riskBadge=s.risk?'<span style="color:'+(riskColors[s.risk]||"var(--dim)")+';font-weight:600;font-size:10px;text-transform:uppercase;margin-left:6px">'+esc(s.risk)+' risk</span>':"";
-    return'<div class="item-card"><div class="item-card-title">'+esc(s.name)+riskBadge+'</div><div class="item-card-sub">'+esc(s.type)+(s.bank?" · "+esc(s.bank):"")+'</div><div class="item-card-rows"><div class="item-card-row"><span class="label">Balance</span><span class="value">'+eurFmt(s.balance)+'</span></div>'+
+    const positions=s.positions||[];
+    const hasPositions=positions.length>0;
+    const balance=hasPositions?positions.reduce((sum,p)=>sum+(p.currentValue||0),0):s.balance;
+    const totalInvested=hasPositions?positions.reduce((sum,p)=>sum+(p.amountInvested||0),0):0;
+    const pnl=hasPositions?(balance-totalInvested):0;
+    const pnlPct=hasPositions&&totalInvested>0?((pnl/totalInvested)*100):0;
+    totalBal+=balance;const annual=balance*(s.rate||0)/100;totalInterest+=annual;
+    let riskLabel=s.risk||"Medium";
+    if(hasPositions){
+      const rv={"Low":1,"Medium":2,"High":3,"Very High":4};const rl={1:"Low",2:"Medium",3:"High",4:"Very High"};
+      const totalVal=positions.reduce((sum,p)=>sum+(p.currentValue||0),0);
+      const avgR=totalVal>0?positions.reduce((sum,p)=>sum+((rv[p.risk]||2)*(p.currentValue||0)),0)/totalVal:2;
+      riskLabel=rl[Math.round(avgR)]||"Medium";
+    }
+    const riskBadge='<span style="color:'+(riskColors[riskLabel]||"var(--dim)")+';font-weight:600;font-size:10px;text-transform:uppercase;margin-left:6px">'+esc(riskLabel)+' risk</span>';
+    let positionsHtml="";
+    if(hasPositions){
+      positionsHtml+='<div class="item-card-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);cursor:pointer" data-toggle-positions="'+attr(s.id)+'"><span class="label" style="font-weight:700;color:var(--bright)">Positions ('+positions.length+')</span><span class="value" style="font-size:11px;color:var(--dim)">▶ Show details</span></div>';
+      positionsHtml+='<div class="positions-detail hidden" id="posDetail_'+attr(s.id)+'">';
+      positions.forEach((p,i)=>{
+        const posPnl=(p.currentValue||0)-(p.amountInvested||0);
+        const posPnlPct=p.amountInvested>0?((posPnl/p.amountInvested)*100):0;
+        positionsHtml+='<div style="padding:8px 0 8px 12px;border-bottom:1px solid var(--border)">';
+        positionsHtml+='<div class="item-card-row"><span class="label" style="font-weight:600;color:var(--bright);font-size:12px">'+esc(p.name)+'</span><span class="value" style="font-size:11px"><span style="color:'+(riskColors[p.risk]||"var(--dim)")+';font-weight:600;font-size:10px;text-transform:uppercase">'+esc(p.risk)+'</span></span></div>';
+        positionsHtml+='<div class="item-card-row"><span class="label" style="font-size:11px">Type</span><span class="value" style="font-size:11px">'+esc(p.type)+'</span></div>';
+        positionsHtml+='<div class="item-card-row"><span class="label" style="font-size:11px">Invested</span><span class="value" style="font-size:11px">'+eurFmt(p.amountInvested)+'</span></div>';
+        positionsHtml+='<div class="item-card-row"><span class="label" style="font-size:11px">Current Value</span><span class="value" style="font-size:11px">'+eurFmt(p.currentValue)+'</span></div>';
+        positionsHtml+='<div class="item-card-row"><span class="label" style="font-size:11px">P&L</span><span class="value '+pnlCls(posPnl)+'" style="font-size:11px">'+eurFmt(posPnl)+' ('+fmtPct(posPnlPct)+')</span></div>';
+        if(p.notes)positionsHtml+='<div class="item-card-row"><span class="label" style="font-size:11px">Notes</span><span class="value" style="color:var(--dim);font-weight:400;font-size:10px">'+esc(p.notes)+'</span></div>';
+        positionsHtml+='</div>';
+      });
+      positionsHtml+='<div class="item-card-row" style="margin-top:6px"><span class="label" style="font-weight:600">Total P&L</span><span class="value '+pnlCls(pnl)+'">'+eurFmt(pnl)+' ('+fmtPct(pnlPct)+')</span></div>';
+      positionsHtml+='</div>';
+    }
+    return'<div class="item-card"><div class="item-card-title">'+esc(s.name)+riskBadge+'</div><div class="item-card-sub">'+esc(s.type)+(s.bank?" · "+esc(s.bank):"")+(hasPositions?" · "+positions.length+" positions":"")+'</div><div class="item-card-rows"><div class="item-card-row"><span class="label">Balance</span><span class="value">'+eurFmt(balance)+'</span></div>'+
     (s.initDeposit?'<div class="item-card-row"><span class="label">Initial Deposit</span><span class="value">'+eurFmt(s.initDeposit)+'</span></div>':"")+
     (s.initCost?'<div class="item-card-row"><span class="label">Initial Cost / Fees</span><span class="value color-red">'+eurFmt(s.initCost)+'</span></div>':"")+
     (s.recurringDeposit?'<div class="item-card-row"><span class="label">Recurring Deposit</span><span class="value">'+eurFmt(s.recurringDeposit)+'/mo</span></div>':"")+
-    '<div class="item-card-row"><span class="label">Interest Rate</span><span class="value">'+(s.rate||0).toFixed(2)+'%</span></div><div class="item-card-row"><span class="label">Annual Interest</span><span class="value color-green">'+eurFmt(annual)+'</span></div>'+(s.notes?'<div class="item-card-row"><span class="label">Notes</span><span class="value" style="color:var(--dim);font-weight:400;font-size:11px">'+esc(s.notes)+'</span></div>':"")+'</div><div class="item-card-actions"><button class="edit-btn" data-edit-saving="'+attr(s.id)+'">Edit</button><button class="delete-btn" data-del-saving="'+attr(s.id)+'">Delete</button></div></div>';
+    (s.rate?'<div class="item-card-row"><span class="label">Interest Rate</span><span class="value">'+(s.rate||0).toFixed(2)+'%</span></div><div class="item-card-row"><span class="label">Annual Interest</span><span class="value color-green">'+eurFmt(annual)+'</span></div>':"")+
+    positionsHtml+
+    (s.notes?'<div class="item-card-row"><span class="label">Notes</span><span class="value" style="color:var(--dim);font-weight:400;font-size:11px">'+esc(s.notes)+'</span></div>':"")+'</div><div class="item-card-actions"><button class="edit-btn" data-edit-saving="'+attr(s.id)+'">Edit</button><button class="delete-btn" data-del-saving="'+attr(s.id)+'">Delete</button></div></div>';
   }).join("");
   const m1={},m2={},m3={};
-  savings.forEach(s=>{m1[s.type]=(m1[s.type]||0)+s.balance;if(s.bank)m2[s.bank]=(m2[s.bank]||0)+s.balance;if(s.risk)m3[s.risk]=(m3[s.risk]||0)+s.balance;});
-  const byType=Object.entries(m1).map(([l,v])=>({label:l,value:v}));
-  const byBank=Object.entries(m2).map(([l,v])=>({label:l,value:v}));
-  const byRisk=Object.entries(m3).map(([l,v])=>({label:l,value:v}));
-  charts.innerHTML=[chartCard("By Account Type",byType,"sByType"),chartCard("By Bank",byBank,"sByBank"),chartCard("By Risk",byRisk,"sByRisk")].join("");
+  savings.forEach(s=>{
+    const positions=s.positions||[];
+    if(positions.length>0){
+      positions.forEach(p=>{
+        m1[p.type]=(m1[p.type]||0)+(p.currentValue||0);
+        if(p.risk)m3[p.risk]=(m3[p.risk]||0)+(p.currentValue||0);
+      });
+    }else{
+      m1[s.type]=(m1[s.type]||0)+s.balance;
+      if(s.risk)m3[s.risk]=(m3[s.risk]||0)+s.balance;
+    }
+    if(s.bank)m2[s.bank]=(m2[s.bank]||0)+(positions.length>0?positions.reduce((sum,p)=>sum+(p.currentValue||0),0):s.balance);
+  });
+  const byType=Object.entries(m1).map(([l,v])=>({label:l,value:v})).filter(x=>x.value>0);
+  const byBank=Object.entries(m2).map(([l,v])=>({label:l,value:v})).filter(x=>x.value>0);
+  const byRisk=Object.entries(m3).map(([l,v])=>({label:l,value:v})).filter(x=>x.value>0);
+  charts.innerHTML=[chartCard("By Type",byType,"sByType"),chartCard("By Bank",byBank,"sByBank"),chartCard("By Risk",byRisk,"sByRisk")].join("");
 }
 
 /* ═══ REAL ESTATE ═══ */
@@ -1336,7 +1447,7 @@ function renderGlobal(){
   const stockPnL=stockValue-stockCost;
   // Savings
   let savTotal=0,savInterest=0;
-  savings.forEach(s=>{savTotal+=s.balance;savInterest+=s.balance*(s.rate||0)/100;});
+  savings.forEach(s=>{const positions=s.positions||[];const bal=positions.length>0?positions.reduce((sum,p)=>sum+(p.currentValue||0),0):s.balance;savTotal+=bal;savInterest+=bal*(s.rate||0)/100;});
   // Real Estate
   let reGrossValue=0,reLoans=0,reEquity=0,reAnnRent=0,reAnnCost=0;
   realEstate.forEach(r=>{reGrossValue+=r.value;const loans=r.loans||[];const tl=loans.length?loans.reduce((s,l)=>s+(l.amount||0),0):(r.loan||0);const tm=loans.length?loans.reduce((s,l)=>s+(l.monthly||0),0):(r.monthly||0);reLoans+=tl;reEquity+=(r.value-tl);if(r.rented)reAnnRent+=r.rent*12;reAnnCost+=(r.charges||0)+(r.tax||0)+tm*12;});
